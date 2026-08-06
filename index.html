@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Panel de Gestión</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-pPcjE2LjuMjPVq00N58WilL0mNB0gU+3i5Q+I3BjOXDyPnDCTpDpYt3w5kRKgaV/c+3efClx8ryzhkXvYl5FQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- Overlay para el drawer en móvil -->
+  <div id="nav-overlay" class="nav-overlay"></div>
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <span class="brand-mark">▣</span>
+      <div>
+        <h1>Panel</h1>
+        <p>Gestión de tienda</p>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-item active" data-view="resumen">
+        <span class="nav-ico">◆</span> Resumen
+      </button>
+      <button class="nav-item" data-view="inventario">
+        <span class="nav-ico">📦</span> Inventario
+      </button>
+      <button class="nav-item" data-view="packs">
+        <span class="nav-ico">🎁</span> Packs
+      </button>
+      <button class="nav-item" data-view="pedidos">
+        <span class="nav-ico">🚚</span> Pedidos
+        <span class="nav-badge" id="badge-pedidos">0</span>
+      </button>
+      <button class="nav-item" data-view="usuarios">
+        <span class="nav-ico">👤</span> Registro de usuarios
+      </button>
+      <button class="nav-item" data-view="notificaciones">
+        <span class="nav-ico">🔔</span> Notificaciones
+      </button>
+      <button class="nav-item" data-view="config">
+        <span class="nav-ico">⚙️</span> Conexión
+      </button>
+    </nav>
+
+    <div class="conn-status" id="connStatus">
+      <span class="dot"></span> <span id="connStatusText">Sin verificar</span>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main">
+
+    <header class="topbar">
+      <button id="menu-btn" class="icon-btn" aria-label="Abrir menú">☰</button>
+      <h1 id="topbar-title">Panel</h1>
+    </header>
+
+    <main class="content">
+
+    <!-- ===================== RESUMEN ===================== -->
+    <section class="view active" id="view-resumen">
+      <header class="view-header">
+        <h2>Resumen</h2>
+        <p>Ventas del mes, productos vendidos y usuarios de la tienda.</p>
+      </header>
+
+      <div class="stat-grid">
+        <div class="stat-card accent">
+          <span class="stat-label">Ventas del mes</span>
+          <span class="stat-value" id="resu-ventas-mes">—</span>
+          <span class="stat-sub">suma de precio_compra_total</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Pedidos del mes</span>
+          <span class="stat-value" id="resu-pedidos-mes">—</span>
+          <span class="stat-sub">nuevos + guardados</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Pedidos nuevos</span>
+          <span class="stat-value" id="resu-pedidos-nuevos">—</span>
+          <span class="stat-sub">pedidos sin asignar</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Seguimiento</span>
+          <span class="stat-value" id="resu-pedidos-seguimiento">—</span>
+          <span class="stat-sub">pedidos guardados en seguimiento</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Productos vendidos</span>
+          <span class="stat-value" id="resu-productos-mes">—</span>
+          <span class="stat-sub">unidades este mes</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Usuarios registrados</span>
+          <span class="stat-value" id="resu-usuarios">—</span>
+          <span class="stat-sub" id="resu-usuarios-sub">—</span>
+        </div>
+      </div>
+
+      <div class="panel-grid">
+        <div class="panel-box">
+          <div class="panel-box-head">
+            <h2>Pedidos recientes</h2>
+          </div>
+          <div id="resu-recientes" class="mini-table">Cargando…</div>
+        </div>
+        <div class="panel-box">
+          <div class="panel-box-head">
+            <h2>Orígenes de tráfico</h2>
+          </div>
+          <div id="resu-origenes" class="mini-table">Cargando…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== CONFIG ===================== -->
+    <section class="view" id="view-config">
+      <header class="view-header">
+        <h2>Conexión al backend</h2>
+        <p>Configura la URL de tu servidor y tu Cloud Name de Cloudinary (solo para mostrar imágenes).</p>
+      </header>
+
+      <div class="form-card">
+        <label>URL del backend
+          <input type="text" id="cfg-api-url" placeholder="https://tu-backend.onrender.com">
+        </label>
+        <label>Cloudinary Cloud Name
+          <input type="text" id="cfg-cloud-name" placeholder="tu-cloud-name">
+        </label>
+        <div class="form-actions">
+          <button class="btn btn-primary" id="cfg-save">Guardar y probar conexión</button>
+        </div>
+        <p class="hint" id="cfg-result"></p>
+      </div>
+
+    </section>
+
+    <!-- ===================== NOTIFICACIONES ===================== -->
+    <section class="view" id="view-notificaciones">
+      <header class="view-header">
+        <h2>Notificaciones</h2>
+        <p>Selecciona un icono FontAwesome y edita el texto que verá el cliente en el banner.</p>
+      </header>
+      <div class="form-card">
+        <div class="modal-section-title">Icono de notificación</div>
+        <div class="icon-picker" id="notif-iconpicker"></div>
+        <p class="hint" style="margin-top:-8px; margin-bottom:16px;">Haz clic en un icono para seleccionarlo; el panel activo se resalta con color y la vista previa se actualiza abajo.</p>
+        <label>Clase de icono
+          <div class="icon-input-row">
+            <input type="text" id="notif-icono" placeholder="fas fa-bell">
+            <span class="icon-input-preview" id="notif-icon-preview"><i class="fas fa-bell"></i></span>
+          </div>
+        </label>
+        <div class="modal-section-title">Contenido del banner</div>
+        <label>Título
+          <input type="text" id="notif-titulo" placeholder="Nueva oferta disponible">
+        </label>
+        <label>Subtítulo
+          <input type="text" id="notif-subtitulo" placeholder="Solo por tiempo limitado">
+        </label>
+        <label>Mensaje
+          <textarea id="notif-mensaje" rows="3" placeholder="Agrega aquí el texto que verán los clientes..."></textarea>
+        </label>
+        <label>Tipo
+          <select id="notif-tipo">
+            <option value="info">Información</option>
+            <option value="success">Éxito</option>
+            <option value="warning">Advertencia</option>
+            <option value="danger">Error</option>
+          </select>
+        </label>
+        <div class="form-actions">
+          <button class="btn btn-primary" id="notif-save" type="button">Guardar notificación</button>
+          <button class="btn btn-ghost" id="notif-load" type="button">Recargar actual</button>
+        </div>
+        <p class="hint" id="notif-hint">Carga la notificación actual del backend y edítala aquí.</p>
+      </div>
+    </section>
+
+    <!-- ===================== INVENTARIO ===================== -->
+    <section class="view" id="view-inventario">
+      <header class="view-header">
+        <h2>Inventario</h2>
+        <p>Productos del catálogo: precio, stock, ofertas e imágenes.</p>
+        <div class="header-actions">
+          <input type="search" id="inv-search" class="search" placeholder="Buscar producto...">
+          <button class="btn btn-primary" id="inv-new">+ Nuevo producto</button>
+        </div>
+      </header>
+      <div class="table-wrap">
+        <div class="inventory-grid" id="inv-grid"></div>
+        <p class="empty" id="inv-empty" hidden>No hay productos todavía.</p>
+      </div>
+    </section>
+
+    <!-- ===================== PACKS ===================== -->
+    <section class="view" id="view-packs">
+      <header class="view-header">
+        <h2>Packs / Combos</h2>
+        <p>Combos armados a partir de productos del inventario.</p>
+        <div class="header-actions">
+          <input type="search" id="pack-search" class="search" placeholder="Buscar pack...">
+          <button class="btn btn-primary" id="pack-new">+ Nuevo pack</button>
+        </div>
+      </header>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th></th><th>Nombre</th><th>Categoría</th><th>Precio</th><th>Productos incluidos</th><th>Activo</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="pack-tbody"></tbody>
+        </table>
+        <p class="empty" id="pack-empty" hidden>No hay packs todavía.</p>
+      </div>
+    </section>
+
+    <!-- ===================== PEDIDOS (Nuevos + Guardados) ===================== -->
+    <section class="view" id="view-pedidos">
+      <header class="view-header">
+        <h2>Pedidos</h2>
+        <p>Pedidos nuevos recién recibidos y pedidos guardados en seguimiento. Al guardar un pedido nuevo pasa automáticamente al panel de seguimiento, donde se registra el estado y la evolución del pedido.</p>
+        <div class="header-actions">
+          <input type="search" id="pedidos-search" class="search" placeholder="Buscar por comprador, teléfono u orden...">
+          <button class="btn btn-ghost" id="pedidos-refresh">↻ Actualizar</button>
+        </div>
+        <div class="seg-tabs" id="pedidos-tabs">
+          <button class="seg-tab active" data-ptab="nuevos">Nuevos <span class="seg-tab-count" id="tab-count-nuevos">0</span></button>
+          <button class="seg-tab" data-ptab="guardados">Guardados <span class="seg-tab-count" id="tab-count-guardados">0</span></button>
+          <button class="seg-tab" data-ptab="seguimiento">Seguimiento <span class="seg-tab-count" id="tab-count-seguimiento">0</span></button>
+        </div>
+      </header>
+
+      <!-- Panel: Pedidos nuevos -->
+      <div class="pedidos-panel active" id="pedidos-panel-nuevos">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th><th>Orden</th><th>Comprador</th><th>Teléfono</th><th>Dirección</th><th>Total</th><th>Cliente</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="nuevos-tbody"></tbody>
+          </table>
+          <p class="empty" id="nuevos-empty" hidden>No hay pedidos nuevos.</p>
+        </div>
+      </div>
+
+      <!-- Panel: Pedidos guardados (solo lectura) -->
+      <div class="pedidos-panel" id="pedidos-panel-guardados">
+        <div class="view-subheader">Pedidos que ya salieron de Nuevos. Solo datos, sin edición de estados.</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha asignación</th><th>Orden</th><th>Comprador</th><th>Teléfono</th><th>Total</th><th>Reincidente</th><th>Estado</th>
+              </tr>
+            </thead>
+            <tbody id="guardados-tbody"></tbody>
+          </table>
+          <p class="empty" id="guardados-empty" hidden>No hay pedidos guardados.</p>
+        </div>
+      </div>
+
+      <!-- Panel: Seguimiento editable -->
+      <div class="pedidos-panel" id="pedidos-panel-seguimiento">
+        <div class="seg-tabs nested" id="seg-tabs">
+          <button class="seg-tab active" data-tab="proceso">En proceso <span class="seg-tab-count" id="seg-count-proceso">0</span></button>
+          <button class="seg-tab" data-tab="completado">Completados <span class="seg-tab-count" id="seg-count-completado">0</span></button>
+        </div>
+        <div class="view-subheader">Pedidos en seguimiento: aquí se controla el estado y la evolución del pedido.</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha asignación</th><th>Orden</th><th>Comprador</th><th>Teléfono</th><th>Total</th><th>Reincidente</th><th>Estados</th><th>Marcador</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="seg-tbody"></tbody>
+          </table>
+          <p class="empty" id="seg-empty" hidden>No hay pedidos acá.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== USUARIOS / ESTADÍSTICAS ===================== -->
+    <section class="view" id="view-usuarios">
+      <header class="view-header">
+        <h2>Registro de usuarios</h2>
+        <p>Visitas y estadísticas registradas de quienes navegan la tienda.</p>
+        <div class="header-actions">
+          <button class="btn btn-ghost" id="usr-refresh">↻ Actualizar</button>
+        </div>
+      </header>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha/Hora</th><th>IP</th><th>País</th><th>Tipo</th><th>Origen</th><th>Navegador</th><th>SO</th>
+            </tr>
+          </thead>
+          <tbody id="usr-tbody"></tbody>
+        </table>
+        <p class="empty" id="usr-empty" hidden>No hay registros todavía.</p>
+      </div>
+    </section>
+
+    </main>
+  </div>
+</div>
+
+<!-- ===================== MODAL PRODUCTO ===================== -->
+<div class="modal-backdrop" id="modal-producto">
+  <div class="modal">
+    <header class="modal-header">
+      <h3 id="prod-modal-title">Nuevo producto</h3>
+      <button class="modal-close" data-close="modal-producto">✕</button>
+    </header>
+    <div class="modal-body">
+      <input type="hidden" id="prod-id">
+
+      <div class="modal-section">
+        <div class="modal-section-title"><span class="dot"></span> Información general</div>
+        <div class="grid-2">
+          <label>Nombre
+            <input type="text" id="prod-nombre" placeholder="Ej. Tamal de maíz">
+          </label>
+          <label>Categoría
+            <select id="prod-categoria"></select>
+          </label>
+        </div>
+        <label>Descripción
+          <textarea id="prod-descripcion" rows="3" placeholder="Detalles visibles para el cliente..."></textarea>
+        </label>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title"><span class="dot"></span> Precio y stock</div>
+        <div class="grid-2">
+          <label>Precio normal
+            <input type="number" step="0.01" id="prod-precio" placeholder="0.00">
+          </label>
+          <label>Stock disponible
+            <input type="number" id="prod-stock" placeholder="0">
+          </label>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title"><span class="dot"></span> Oferta y descuento</div>
+        <label class="check"><input type="checkbox" id="prod-oferta"> Este producto está en oferta</label>
+        <div class="oferta-box" id="prod-oferta-box" hidden>
+          <div class="grid-2">
+            <label>Precio con descuento
+              <input type="number" step="0.01" id="prod-precio-oferta" placeholder="0.00">
+            </label>
+            <label>Descuento calculado
+              <input type="text" id="prod-descuento-view" placeholder="—" disabled>
+            </label>
+          </div>
+          <p class="hint" id="prod-oferta-info">Ingresa el precio final y el porcentaje se calcula solo.</p>
+          <input type="hidden" id="prod-descuento" value="0">
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title"><span class="dot"></span> Visibilidad</div>
+        <div class="grid-2 checks">
+          <label class="check"><input type="checkbox" id="prod-activo" checked> Activo (visible en la tienda)</label>
+          <label class="check"><input type="checkbox" id="prod-mas-vendido"> Marcar como "Más vendido"</label>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <div class="images-section">
+          <div class="images-section-head">
+            <span class="modal-section-title" style="margin:0;"><span class="dot"></span> Imágenes</span>
+            <label class="btn btn-ghost btn-small file-btn">
+              + Añadir imagen
+              <input type="file" id="prod-file-input" accept="image/*" multiple hidden>
+            </label>
+          </div>
+          <div class="image-grid" id="prod-image-grid"></div>
+          <p class="hint" id="prod-image-hint"></p>
+        </div>
+      </div>
+    </div>
+    <footer class="modal-footer">
+      <button class="btn btn-danger" id="prod-delete" hidden>Eliminar producto</button>
+      <div class="spacer"></div>
+      <button class="btn btn-ghost" data-close="modal-producto">Cancelar</button>
+      <button class="btn btn-primary" id="prod-save">Guardar</button>
+    </footer>
+  </div>
+</div>
+
+<!-- ===================== MODAL PACK ===================== -->
+<div class="modal-backdrop" id="modal-pack">
+  <div class="modal">
+    <header class="modal-header">
+      <h3 id="pack-modal-title">Nuevo pack</h3>
+      <button class="modal-close" data-close="modal-pack">✕</button>
+    </header>
+    <div class="modal-body">
+      <input type="hidden" id="pack-id">
+
+      <div class="modal-section">
+        <div class="modal-section-title"><span class="dot"></span> Información general</div>
+        <div class="grid-2">
+          <label>Nombre
+            <input type="text" id="pack-nombre" placeholder="Ej. Combo familiar">
+          </label>
+          <label>Categoría
+            <div class="fixed-field">Pack</div>
+            <input type="hidden" id="pack-categoria" value="Pack">
+          </label>
+        </div>
+        <label>Descripción
+          <textarea id="pack-descripcion" rows="3" placeholder="Detalles visibles para el cliente..."></textarea>
+        </label>
+        <label>Características (una por línea)
+          <textarea id="pack-caracteristicas" rows="4" placeholder="- Tamales&#10;- Ensalada de Tomate y Col&#10;- Congris"></textarea>
+        </label>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title"><span class="dot"></span> Precio</div>
+        <label>Precio normal
+          <input type="number" step="0.01" id="pack-precio" placeholder="0.00">
+        </label>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title"><span class="dot"></span> Oferta y descuento</div>
+        <label class="check"><input type="checkbox" id="pack-oferta"> Este pack está en oferta</label>
+        <div class="oferta-box" id="pack-oferta-box" hidden>
+          <div class="grid-2">
+            <label>Precio con descuento
+              <input type="number" step="0.01" id="pack-precio-oferta" placeholder="0.00">
+            </label>
+            <label>Descuento calculado
+              <input type="text" id="pack-descuento-view" placeholder="—" disabled>
+            </label>
+          </div>
+          <p class="hint" id="pack-oferta-info">Ingresa el precio final y el porcentaje se calcula solo.</p>
+          <input type="hidden" id="pack-descuento" value="0">
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title"><span class="dot"></span> Visibilidad y etiquetas</div>
+        <div class="grid-3 checks">
+          <label class="check"><input type="checkbox" id="pack-disponible" checked> Disponible</label>
+          <label class="check"><input type="checkbox" id="pack-top"> Destacado (top)</label>
+          <label class="check"><input type="checkbox" id="pack-nuevo"> Nuevo</label>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <div class="images-section">
+          <div class="images-section-head">
+            <span class="modal-section-title" style="margin:0;"><span class="dot"></span> Imágenes</span>
+            <label class="btn btn-ghost btn-small file-btn">
+              + Añadir imagen
+              <input type="file" id="pack-file-input" accept="image/*" multiple hidden>
+            </label>
+          </div>
+          <div class="image-grid" id="pack-image-grid"></div>
+          <p class="hint" id="pack-image-hint"></p>
+        </div>
+      </div>
+    </div>
+    <footer class="modal-footer">
+      <button class="btn btn-danger" id="pack-delete" hidden>Eliminar pack</button>
+      <div class="spacer"></div>
+      <button class="btn btn-ghost" data-close="modal-pack">Cancelar</button>
+      <button class="btn btn-primary" id="pack-save">Guardar</button>
+    </footer>
+  </div>
+</div>
+
+<!-- ===================== MODAL DETALLE PEDIDO ===================== -->
+<div class="modal-backdrop" id="modal-pedido">
+  <div class="modal">
+    <header class="modal-header">
+      <h3>Detalle del pedido</h3>
+      <button class="modal-close" data-close="modal-pedido">✕</button>
+    </header>
+    <div class="modal-body" id="pedido-detalle-body"></div>
+    <footer class="modal-footer">
+      <button class="btn btn-ghost" data-close="modal-pedido">Cerrar</button>
+    </footer>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
