@@ -56,7 +56,7 @@ function cloudinaryUrl(publicId, folder = 'products'){
   if (!publicId) return null;
   if (/^https?:\/\//i.test(publicId) || publicId.startsWith('data:image')) return publicId;
   if (!state.cloudName) return null;
-  return `https://res.cloudinary.com/${state.cloudName}/image/upload/f_auto,q_auto/${folder}/${encodeURIComponent(publicId)}`;
+  return `https://res.cloudinary.com/${state.cloudName}/image/upload/f_webp,q_auto/${folder}/${encodeURIComponent(publicId)}`;
 }
 
 function fileToDataUrl(file){
@@ -72,8 +72,9 @@ function fileToDataUrl(file){
 // base64. Esto es clave: el backend usa express.json() con un límite de
 // tamaño de body (por defecto 100kb), y una foto de cámara sin comprimir
 // (varios MB) supera ese límite y provoca un error 500/413 al guardar.
-// Con esto, cada imagen queda en unos pocos cientos de KB como máximo.
-function compressImage(file, maxDim = 1280, quality = 0.8){
+// Con esto, cada imagen queda en unos pocos cientos de KB como máximo y
+// se sube ya en formato WebP para ahorrar ancho de banda.
+function compressImage(file, maxDim = 1280, quality = 0.82){
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -89,7 +90,7 @@ function compressImage(file, maxDim = 1280, quality = 0.8){
         canvas.width = width;
         canvas.height = height;
         canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', quality));
+        resolve(canvas.toDataURL('image/webp', quality));
       };
       img.onerror = reject;
       img.src = reader.result;
