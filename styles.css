@@ -40,6 +40,11 @@
    gane sin importar qué otra clase tenga el elemento. */
 [hidden]{ display:none !important; }
 html,body{ height: 100%; }
+/* Red de seguridad: ningún hijo (botón muy largo, tabla, grid mal calculado,
+   etc.) puede forzar scroll horizontal de TODA la página. El contenido que
+   de verdad necesita desbordarse (tablas, seg-tabs) ya maneja su propio
+   overflow-x:auto puntual más abajo. */
+html{ overflow-x: hidden; width: 100%; }
 body{
   margin:0;
   background: var(--bg);
@@ -47,7 +52,10 @@ body{
   font-family: var(--font-body);
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  width: 100%;
 }
+img{ max-width: 100%; display:block; }
 h1,h2,h3{ font-family: var(--font-display); margin:0; letter-spacing:-0.01em; }
 p{ margin:0; }
 button, input, select, textarea{ font-family: inherit; }
@@ -386,13 +394,23 @@ tbody tr:hover td{ background: var(--surface-2); }
 }
 
 /* Pestañas: Pedidos (Nuevos / Guardados) y, anidadas dentro de Guardados,
-   En proceso / Completados. Mismo componente visual, reutilizable. */
-.seg-tabs{ display:flex; gap:8px; margin-top:14px; }
+   En proceso / Completados. Mismo componente visual, reutilizable.
+   En pantallas angostas no caben las 3 (o 2) pestañas + contador sin
+   desbordar, así que en vez de que se corten fuera de la pantalla, el
+   contenedor se vuelve un carrusel horizontal deslizable (patrón típico
+   de tabs en móvil) y cada pestaña conserva su ancho legible. */
+.seg-tabs{
+  display:flex; gap:8px; margin-top:14px;
+  overflow-x:auto; -webkit-overflow-scrolling:touch;
+  scrollbar-width:none; padding-bottom:2px;
+}
+.seg-tabs::-webkit-scrollbar{ display:none; }
 .seg-tabs.nested{ margin-top:0; margin-bottom:14px; }
 .seg-tab{
   background: var(--surface); border:1px solid var(--border); color: var(--text-muted);
   padding: 8px 14px; border-radius: 999px; font-size:13px; font-weight:600; cursor:pointer;
   display:flex; align-items:center; gap:8px; transition: background .12s ease, color .12s ease, border-color .12s ease;
+  flex-shrink:0; white-space:nowrap;
 }
 .seg-tab:hover{ color: var(--text); border-color: var(--text-faint); }
 .seg-tab.active{ background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
@@ -419,12 +437,15 @@ tbody tr:hover td{ background: var(--surface-2); }
   width:100%; max-width: 600px; max-height: calc(100vh - 80px); display:flex; flex-direction:column;
   box-shadow: var(--shadow-l);
 }
-.modal-header{ display:flex; align-items:center; justify-content:space-between; padding: 18px 20px; border-bottom:1px solid var(--border); }
+.modal-header{ display:flex; align-items:center; justify-content:space-between; padding: 18px 20px; border-bottom:1px solid var(--border); gap:12px; }
 .modal-header h3{ margin:0; font-size:17px; }
-.modal-close{ background:none; border:none; color: var(--text-faint); font-size:16px; cursor:pointer; }
+.modal-close{ background:none; border:none; color: var(--text-faint); font-size:16px; cursor:pointer; flex-shrink:0; width:28px; height:28px; display:flex; align-items:center; justify-content:center; }
 .modal-close:hover{ color: var(--text); }
 .modal-body{ padding: 20px; overflow-y:auto; display:flex; flex-direction:column; gap:20px; }
-.modal-footer{ display:flex; align-items:center; gap:10px; padding: 16px 20px; border-top: 1px solid var(--border); }
+/* flex-wrap evita que "Eliminar producto" + "Cancelar" + "Guardar" (3
+   botones con texto largo) se salgan del modal en pantallas angostas; en
+   mobile además los apilamos en columna (ver media query). */
+.modal-footer{ display:flex; align-items:center; gap:10px; padding: 16px 20px; border-top: 1px solid var(--border); flex-wrap: wrap; }
 .spacer{ flex:1; }
 
 /* Bloques temáticos dentro de los modales de producto / pack: separan
@@ -479,12 +500,15 @@ textarea{ resize: vertical; }
 .detail-grid{ display:grid; grid-template-columns: 130px 1fr; row-gap:8px; font-size:13px; }
 .detail-grid dt{ color: var(--text-faint); }
 .detail-grid dd{ margin:0; }
-.compras-list{ margin-top:8px; }
+.compras-list{ margin-top:8px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
 .compras-list table{ font-size:12.5px; }
 .compras-list strong{ font-size: 12.5px; color: var(--text-muted); text-transform:uppercase; letter-spacing:.04em; }
 
 .form-card{ background: var(--surface); border:1px solid var(--border); border-radius: var(--radius-m); padding:22px; display:flex; flex-direction:column; gap:14px; max-width:480px; box-shadow: var(--shadow-s); }
-.form-actions{ display:flex; }
+/* Antes no tenía gap ni flex-wrap: con 2 botones de texto largo (p.ej.
+   "Guardar notificación" + "Recargar actual") se salían del contenedor en
+   vez de bajar de línea. */
+.form-actions{ display:flex; gap:10px; flex-wrap: wrap; }
 .hint{ font-size:12.5px; color: var(--text-muted); margin:0; }
 .hint.ok{ color: var(--teal); }
 .hint.err{ color: var(--red); }
@@ -504,6 +528,8 @@ textarea{ resize: vertical; }
 /* ============================================================
    Responsive
    ============================================================ */
+
+/* Tablets / laptops chicos */
 @media (max-width: 980px){
   .stat-grid{ grid-template-columns: repeat(2,1fr); }
   .panel-grid{ grid-template-columns: 1fr; }
@@ -511,23 +537,32 @@ textarea{ resize: vertical; }
   .header-actions{ width:100%; justify-content:flex-start; }
 }
 
+/* Punto donde el sidebar se convierte en drawer y aparece el topbar
+   con el botón de menú (☰). */
 @media (max-width: 860px){
-  .sidebar{ transform: translateX(-100%); width: 100%; }
-  .sidebar.open{ transform: translateX(0); }
+  .sidebar{ transform: translateX(-100%); width: min(300px, 82vw); }
+  .sidebar.open{ transform: translateX(0); box-shadow: var(--shadow-l); }
   .nav-overlay.open{ display:block; }
-  .main{ margin-left:0; }
+  .main{ margin-left:0; min-width:0; }
   .topbar{ display:flex; }
-  .content{ padding: 18px; }
+  .content{ padding: 18px; max-width:100%; }
   .view-header{ align-items:flex-start; }
   .header-actions{ flex-direction: column; align-items: stretch; gap: 12px; }
   .header-actions .search{ max-width: none; width: 100%; }
   .grid-2, .grid-3{ grid-template-columns: 1fr; }
-  .inventory-grid{ grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+  .inventory-grid{ grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:12px; }
+  /* Botones táctiles: 44px es el mínimo recomendado para no fallar el tap */
+  .icon-btn{ width:40px; height:40px; }
+  .modal-close{ width:36px; height:36px; }
 }
 
+/* Teléfonos */
 @media (max-width: 520px){
-  .stat-grid{ grid-template-columns: 1fr; gap:10px; }
-  .stat-value{ font-size: 21px; }
+  html, body{ font-size: 14px; }
+  .stat-grid{ grid-template-columns: 1fr 1fr; gap:10px; }
+  .stat-card{ padding: 14px 12px 12px; }
+  .stat-value{ font-size: 20px; }
+  .stat-label{ font-size: 11px; }
   .header-actions{ width:100%; }
   .header-actions .search{ min-width:0; flex:1; }
   .panel-box{ padding: 14px; }
@@ -536,7 +571,45 @@ textarea{ resize: vertical; }
   .topbar{ padding: 0 12px; }
   .brand{ padding: 16px 14px; }
   .conn-status{ padding: 12px 14px; }
-  .table-wrap{ overflow-x:auto; }
-  .modal{ width: calc(100% - 24px); max-width: 100%; }
-  .modal-body{ padding: 16px; }
+  .table-wrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+
+  /* Cards de producto/pack a una sola columna: más legibles que
+     achicar todo hasta que no se lea nada. */
+  .inventory-grid{ grid-template-columns: 1fr; gap: 12px; }
+  .product-card-actions .btn{ flex:1 1 auto; }
+
+  /* Modal casi de borde a borde, con altura ajustada al viewport real
+     de móviles (evita el salto por la barra de direcciones de iOS/Android)
+     y soporte para el "notch"/home-indicator vía safe-area. */
+  .modal-backdrop{ padding: 0; align-items:flex-end; }
+  .modal{
+    width: 100%; max-width: 100%; max-height: 92vh; max-height: 92dvh;
+    border-radius: var(--radius-l) var(--radius-l) 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .modal-header{ padding: 16px 16px; }
+  .modal-body{ padding: 16px; gap:16px; }
+  .modal-footer{ padding: 14px 16px; }
+
+  /* Los 2-3 botones del footer del modal (Eliminar / Cancelar / Guardar)
+     se apilan en columna, a ancho completo, en vez de intentar caber
+     todos en una sola fila angosta. flex-direction:column-reverse deja
+     la acción principal ("Guardar") arriba, más cerca del pulgar. */
+  .modal-footer{ flex-direction: column-reverse; align-items: stretch; }
+  .modal-footer .spacer{ display:none; }
+  .modal-footer .btn{ width:100%; justify-content:center; }
+
+  /* Igual para formularios sueltos (Conexión, Notificaciones). */
+  .form-actions{ flex-direction: column; }
+  .form-actions .btn{ width:100%; justify-content:center; }
+
+  .detail-grid{ grid-template-columns: 100px 1fr; row-gap:6px; }
+  .row-actions{ justify-content:flex-start; }
+}
+
+/* Teléfonos muy angostos (iPhone SE y similares) */
+@media (max-width: 360px){
+  .stat-grid{ grid-template-columns: 1fr; }
+  .brand h1{ font-size: 14px; }
+  .btn{ padding: 9px 12px; font-size: 12.5px; }
 }
