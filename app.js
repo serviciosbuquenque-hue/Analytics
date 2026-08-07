@@ -849,14 +849,14 @@ function renderPedidosNuevos(){
     const reincidente = esClienteReincidente(p, historial);
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${escapeHtml(p.fecha_registro_backend ? new Date(p.fecha_registro_backend).toLocaleString() : '—')}</td>
-      <td>${escapeHtml(getPedidoNumero(p) || '—')}</td>
-      <td>${escapeHtml(p.nombre_comprador || '—')}</td>
-      <td>${escapeHtml(p.telefono_comprador || '—')}</td>
-      <td>${escapeHtml(p.direccion_envio || '—')}</td>
-      <td>$${Number(p.precio_compra_total || 0).toFixed(2)}</td>
-      <td>${reincidente ? `<span class="pill pill-warn">Ya compró</span>` : `<span class="pill pill-yes">Nuevo</span>`}</td>
-      <td>
+      <td data-label="Fecha">${escapeHtml(p.fecha_registro_backend ? new Date(p.fecha_registro_backend).toLocaleString() : '—')}</td>
+      <td data-label="Orden">${escapeHtml(getPedidoNumero(p) || '—')}</td>
+      <td data-label="Comprador">${escapeHtml(p.nombre_comprador || '—')}</td>
+      <td data-label="Teléfono">${escapeHtml(p.telefono_comprador || '—')}</td>
+      <td data-label="Dirección">${escapeHtml(p.direccion_envio || '—')}</td>
+      <td data-label="Total">$${Number(p.precio_compra_total || 0).toFixed(2)}</td>
+      <td data-label="Cliente">${reincidente ? `<span class="pill pill-warn">Ya compró</span>` : `<span class="pill pill-yes">Nuevo</span>`}</td>
+      <td data-label="Acciones">
         <div class="row-actions">
           <button class="icon-btn" title="Ver detalle" data-view="${p.id}">👁</button>
           ${reincidente ? `<button class="icon-btn" title="Ver pedido anterior de este cliente" data-prev="${p.id}">🕓</button>` : ''}
@@ -889,13 +889,13 @@ function renderPedidosGuardados(){
     const reincidente = esClienteReincidente(p, [...state.pedidosNuevos, ...state.pedidosSeguimiento]);
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${escapeHtml(p.fecha_asignacion || '—')}</td>
-      <td>${escapeHtml(getPedidoNumero(p) || '—')}</td>
-      <td>${escapeHtml(p.nombre_comprador || '—')}</td>
-      <td>${escapeHtml(p.telefono_comprador || '—')}</td>
-      <td>$${Number(p.precio_compra_total || 0).toFixed(2)}</td>
-      <td>${reincidente ? `<span class="pill pill-warn">Sí</span>` : `<span class="pill pill-no">No</span>`}</td>
-      <td><span class="pill ${marcador.cls}">${marcador.text}</span></td>`;
+      <td data-label="Fecha asignación">${escapeHtml(p.fecha_asignacion || '—')}</td>
+      <td data-label="Orden">${escapeHtml(getPedidoNumero(p) || '—')}</td>
+      <td data-label="Comprador">${escapeHtml(p.nombre_comprador || '—')}</td>
+      <td data-label="Teléfono">${escapeHtml(p.telefono_comprador || '—')}</td>
+      <td data-label="Total">$${Number(p.precio_compra_total || 0).toFixed(2)}</td>
+      <td data-label="Reincidente">${reincidente ? `<span class="pill pill-warn">Sí</span>` : `<span class="pill pill-no">No</span>`}</td>
+      <td data-label="Estado"><span class="pill ${marcador.cls}">${marcador.text}</span></td>`;
     tbody.appendChild(tr);
   });
 }
@@ -970,13 +970,13 @@ function renderPedidosSeguimiento(){
     const tr = document.createElement('tr');
     const marcador = MARCADOR[estadoPedidoKey(p)];
     tr.innerHTML = `
-      <td>${escapeHtml(p.fecha_asignacion || '—')}</td>
-      <td>${escapeHtml(getPedidoNumero(p) || '—')}</td>
-      <td>${escapeHtml(p.nombre_comprador || '—')}</td>
-      <td>${escapeHtml(p.telefono_comprador || '—')}</td>
-      <td>$${Number(p.precio_compra_total || 0).toFixed(2)}</td>
-      <td>${reincidente ? `<span class="pill pill-warn">Sí</span>` : `<span class="pill pill-no">No</span>`}</td>
-      <td>
+      <td data-label="Fecha asignación">${escapeHtml(p.fecha_asignacion || '—')}</td>
+      <td data-label="Orden">${escapeHtml(getPedidoNumero(p) || '—')}</td>
+      <td data-label="Comprador">${escapeHtml(p.nombre_comprador || '—')}</td>
+      <td data-label="Teléfono">${escapeHtml(p.telefono_comprador || '—')}</td>
+      <td data-label="Total">$${Number(p.precio_compra_total || 0).toFixed(2)}</td>
+      <td data-label="Reincidente">${reincidente ? `<span class="pill pill-warn">Sí</span>` : `<span class="pill pill-no">No</span>`}</td>
+      <td data-label="Estados">
         <div class="estado-checks" data-estados="${p.id}">
           ${ESTADO_FIELDS.map(f => {
             if (f.key === 'pendiente_pago' && toBoolean(p.pagado)) return '';
@@ -989,8 +989,8 @@ function renderPedidosSeguimiento(){
           }).join('')}
         </div>
       </td>
-      <td><span class="pill ${marcador.cls}">${marcador.text}</span></td>
-      <td>
+      <td data-label="Marcador"><span class="pill ${marcador.cls}">${marcador.text}</span></td>
+      <td data-label="Acciones">
         <div class="row-actions">
           <button class="icon-btn" title="Ver detalle" data-view="${p.id}">👁</button>
           <button class="icon-btn" title="Eliminar" data-del="${p.id}">🗑</button>

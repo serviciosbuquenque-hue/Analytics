@@ -591,6 +591,73 @@ textarea{ resize: vertical; }
 }
 
 @media (max-width: 720px) {
+  #view-pedidos .table-wrap {
+    border: none;
+    box-shadow: none;
+    background: transparent;
+    overflow: visible;
+  }
+  #view-pedidos table {
+    width: 100%;
+    border: none;
+  }
+  #view-pedidos thead {
+    display: none;
+  }
+  #view-pedidos tbody tr {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 16px;
+    margin-bottom: 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-m);
+    background: var(--surface);
+    box-shadow: var(--shadow-s);
+  }
+  #view-pedidos tbody td {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: none;
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  #view-pedidos tbody td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 4px;
+    font-size: 10.5px;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: .08em;
+  }
+  #view-pedidos tbody td:last-child {
+    margin-top: 4px;
+  }
+  #view-pedidos .row-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  #view-pedidos .estado-checks {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  #view-pedidos .estado-check {
+    justify-content: flex-start;
+    padding: 8px 10px;
+  }
+  #view-pedidos .seg-tabs {
+    gap: 6px;
+    padding-bottom: 4px;
+  }
+  #view-pedidos .seg-tab {
+    font-size: 12.5px;
+    padding: 8px 12px;
+  }
+
   #view-packs .table-wrap {
     border: none;
     box-shadow: none;
@@ -728,6 +795,7 @@ textarea{ resize: vertical; }
 
   .detail-grid{ grid-template-columns: 100px 1fr; row-gap:6px; }
   .row-actions{ justify-content:flex-start; }
+  #view-pedidos .estado-checks{ grid-template-columns: 1fr; }
 }
 
 /* Teléfonos muy angostos (iPhone SE y similares) */
