@@ -358,10 +358,29 @@ tbody tr:last-child td{ border-bottom:none; }
 tbody tr:hover td{ background: var(--surface-2); }
 .empty{ padding: 30px; text-align:center; color: var(--text-faint); }
 
-.thumb{ width: 40px; height:40px; border-radius:8px; object-fit:cover; background: var(--surface-2); border:1px solid var(--border); }
+#view-packs table th:first-child,
+#view-packs tbody td:first-child {
+  width: 92px;
+  min-width: 92px;
+}
+
+.thumb{ width: 68px; height:68px; min-width: 68px; border-radius:14px; object-fit:cover; background: var(--surface-2); border:1px solid var(--border); }
 .thumb-placeholder{
-  width:40px; height:40px; border-radius:8px; background: var(--surface-2); border:1px solid var(--border);
-  display:flex; align-items:center; justify-content:center; color: var(--text-faint); font-size:15px;
+  width:68px; height:68px; min-width: 68px; border-radius:14px; background: var(--surface-2); border:1px solid var(--border);
+  display:flex; align-items:center; justify-content:center; color: var(--text-faint); font-size:18px;
+}
+
+.pack-included{
+  max-width: 32rem;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.6;
+  font-size: 13px;
+  color: var(--text);
+  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 14px;
+  padding: 10px 12px;
 }
 
 .pill{ display:inline-block; padding: 3px 10px; border-radius:999px; font-size: 11.5px; font-weight:600; }
@@ -485,15 +504,15 @@ textarea{ resize: vertical; }
 
 .images-section{ display:flex; flex-direction:column; gap:10px; }
 .images-section-head{ display:flex; align-items:center; justify-content:space-between; }
-.image-grid{ display:flex; flex-wrap:wrap; gap:10px; }
+.image-grid{ display:flex; flex-wrap:wrap; gap:12px; }
 .image-tile{
-  position:relative; width:72px; height:72px; border-radius: var(--radius-s); overflow:hidden;
+  position:relative; width:88px; height:88px; border-radius: var(--radius-s); overflow:hidden;
   border: 1px solid var(--border); background: var(--surface-2);
 }
 .image-tile img{ width:100%; height:100%; object-fit:cover; }
 .image-tile .rm{
-  position:absolute; top:2px; right:2px; background: rgba(0,0,0,.65);
-  color:#fff; border:none; width:18px; height:18px; border-radius:50%;
+  position:absolute; top:4px; right:4px; background: rgba(0,0,0,.65);
+  color:#fff; border:none; width:20px; height:20px; border-radius:50%;
   font-size:11px; cursor:pointer; line-height:1;
 }
 
@@ -551,9 +570,113 @@ textarea{ resize: vertical; }
   .header-actions .search{ max-width: none; width: 100%; }
   .grid-2, .grid-3{ grid-template-columns: 1fr; }
   .inventory-grid{ grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:12px; }
+  /* Ajuste específico para el listado de packs on tablet/móvil */
+  #view-packs .pack-included{
+    max-width: 100%;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  #view-packs table th:nth-child(2),
+  #view-packs tbody td:nth-child(2){
+    min-width: 100px;
+  }
+  #view-packs table th:first-child,
+  #view-packs tbody td:first-child {
+    width: 76px;
+    min-width: 76px;
+  }
   /* Botones táctiles: 44px es el mínimo recomendado para no fallar el tap */
   .icon-btn{ width:40px; height:40px; }
   .modal-close{ width:36px; height:36px; }
+}
+
+@media (max-width: 720px) {
+  #view-packs .table-wrap {
+    border: none;
+    box-shadow: none;
+  }
+  #view-packs table {
+    width: 100%;
+    border: none;
+  }
+  #view-packs thead {
+    display: none;
+  }
+  #view-packs tbody tr {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 16px;
+    margin-bottom: 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-m);
+    background: var(--surface-2);
+  }
+  #view-packs tbody td {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: none;
+  }
+  #view-packs tbody td:nth-child(1) {
+    display: flex;
+    justify-content: center;
+  }
+  #view-packs tbody td:nth-child(1) img,
+  #view-packs tbody td:nth-child(1) .thumb-placeholder {
+    width: 100px;
+    height: 100px;
+    border-radius: 18px;
+  }
+  #view-packs tbody td:nth-child(2) {
+    font-weight: 700;
+    line-height: 1.3;
+    font-size: 1rem;
+  }
+  #view-packs tbody td:nth-child(3),
+  #view-packs tbody td:nth-child(4),
+  #view-packs tbody td:nth-child(5),
+  #view-packs tbody td:nth-child(6),
+  #view-packs tbody td:nth-child(7) {
+    margin-top: 10px;
+  }
+  #view-packs tbody td:nth-child(2)::before,
+  #view-packs tbody td:nth-child(3)::before,
+  #view-packs tbody td:nth-child(4)::before,
+  #view-packs tbody td:nth-child(5)::before,
+  #view-packs tbody td:nth-child(6)::before,
+  #view-packs tbody td:nth-child(7)::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 6px;
+    font-size: 11px;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: .08em;
+  }
+  #view-packs tbody td:nth-child(7) {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+  }
+  #view-packs .row-actions {
+    justify-content: flex-start;
+    width: 100%;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+}
+
+#view-packs .pack-features {
+  margin: 0;
+  padding-left: 18px;
+  list-style: disc;
+  color: var(--text);
+}
+#view-packs .pack-features li {
+  margin-bottom: 6px;
+  line-height: 1.5;
+  font-size: 13px;
 }
 
 /* Teléfonos */

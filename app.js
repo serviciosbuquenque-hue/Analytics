@@ -330,6 +330,7 @@ function renderProductos(){
     const imgUrl = cloudinaryUrl((p.imagenes || [])[0]);
     const card = document.createElement('article');
     card.className = 'product-card';
+    const available = p.disponibilidad !== false;
     card.innerHTML = `
       <div class="product-card-img">${imgUrl ? `<img src="${imgUrl}" alt="${escapeHtml(p.nombre)}">` : `<div class="thumb-placeholder">📦</div>`}</div>
       <div class="product-card-body">
@@ -338,7 +339,7 @@ function renderProductos(){
             <h3>${escapeHtml(p.nombre)}</h3>
             <p class="product-card-category">${escapeHtml(p.categoria || '—')}</p>
           </div>
-          <span class="pill ${p.activo !== false ? 'pill-yes' : 'pill-no'}">${p.activo !== false ? 'Activo' : 'Oculto'}</span>
+          <span class="pill ${available ? 'pill-yes' : 'pill-no'}">${available ? 'Disponible' : 'Oculto'}</span>
         </div>
         <div class="product-card-meta">
           <div><span>Precio</span><strong>$${Number(p.precio || 0).toFixed(2)}</strong></div>
@@ -377,7 +378,10 @@ function openProductoModal(id){
   document.getElementById('prod-precio').value = p ? (p.precio ?? 0) : '';
   document.getElementById('prod-stock').value = p ? (p.stock ?? 0) : '';
   document.getElementById('prod-oferta').checked = p ? !!p.oferta : false;
-  document.getElementById('prod-activo').checked = p ? p.activo !== false : true;
+  const productoDisponible = p
+    ? (p.disponibilidad !== undefined ? p.disponibilidad !== false : p.disponible !== false)
+    : true;
+  document.getElementById('prod-activo').checked = productoDisponible;
   document.getElementById('prod-mas-vendido').checked = p ? !!p.mas_vendido : false;
   document.getElementById('prod-delete').hidden = !p;
 
@@ -440,6 +444,7 @@ document.getElementById('prod-save').addEventListener('click', async () => {
     showToast('Define un precio con descuento válido antes de guardar.', true);
     return;
   }
+  const disponibilidadValue = document.getElementById('prod-activo').checked;
   const payload = {
     nombre: document.getElementById('prod-nombre').value.trim(),
     categoria: document.getElementById('prod-categoria').value.trim(),
@@ -448,7 +453,9 @@ document.getElementById('prod-save').addEventListener('click', async () => {
     stock: Number(document.getElementById('prod-stock').value || 0),
     descuento,
     oferta,
-    activo: document.getElementById('prod-activo').checked,
+    disponible: disponibilidadValue,
+    disponibilidad: disponibilidadValue,
+    activo: disponibilidadValue,
     mas_vendido: document.getElementById('prod-mas-vendido').checked,
     imagenes: state.prodImages
   };
@@ -507,15 +514,20 @@ function renderPacks(){
   list.forEach(p => {
     const tr = document.createElement('tr');
     const imgUrl = cloudinaryUrl((p.imagenes || [])[0] || p.imagen, 'packs');
-    const caracteristicas = Array.isArray(p.caracteristicas) ? p.caracteristicas.join(' · ') : '';
+    const caracteristicas = Array.isArray(p.caracteristicas)
+      ? p.caracteristicas
+      : (p.caracteristicas ? String(p.caracteristicas).split(/\r?\n/) : []);
+    const caracteristicasHtml = caracteristicas.length
+      ? `<ul class="pack-features">${caracteristicas.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`
+      : '—';
     tr.innerHTML = `
-      <td>${imgUrl ? `<img class="thumb" src="${imgUrl}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'thumb-placeholder',textContent:'⚠'}))">` : `<div class="thumb-placeholder">🎁</div>`}</td>
-      <td>${escapeHtml(p.nombre)}</td>
-      <td>${escapeHtml(p.categoria || '—')}</td>
-      <td>$${Number(p.precio || 0).toFixed(2)}</td>
-      <td class="pack-included" title="${escapeHtml(caracteristicas)}">${escapeHtml(caracteristicas || '—')}</td>
-      <td>${p.disponible !== false ? `<span class="pill pill-yes">Disponible</span>` : `<span class="pill pill-no">Oculto</span>`}</td>
-      <td>
+      <td data-label="Imagen">${imgUrl ? `<img class="thumb" src="${imgUrl}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'thumb-placeholder',textContent:'⚠'}))">` : `<div class="thumb-placeholder">🎁</div>`}</td>
+      <td data-label="Nombre">${escapeHtml(p.nombre)}</td>
+      <td data-label="Categoría">${escapeHtml(p.categoria || '—')}</td>
+      <td data-label="Precio">$${Number(p.precio || 0).toFixed(2)}</td>
+      <td class="pack-included" data-label="Incluye">${caracteristicasHtml}</td>
+      <td data-label="Estado">${p.disponible !== false ? `<span class="pill pill-yes">Disponible</span>` : `<span class="pill pill-no">Oculto</span>`}</td>
+      <td data-label="Acciones">
         <div class="row-actions">
           <button class="icon-btn" title="Editar" data-edit="${p.id}">✎</button>
           <button class="icon-btn" title="Eliminar" data-del="${p.id}">🗑</button>
