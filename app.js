@@ -49,14 +49,14 @@ function showToast(msg, isError = false){
   showToast._t = setTimeout(() => { t.className = 'toast'; }, 3200);
 }
 
-// Las imágenes se sirven desde la raíz pública de Cloudinary para que la
-// web principal y Analytics puedan leerlas sin depender de subcarpetas.
-function cloudinaryUrl(publicId, folder = ''){
+// folder: 'products' para inventario, 'packs' para packs — Cloudinary
+// guarda cada tipo en una carpeta distinta y hay que respetarla al construir
+// la URL o la imagen simplemente no existe en esa ruta.
+function cloudinaryUrl(publicId, folder = 'products'){
   if (!publicId) return null;
   if (/^https?:\/\//i.test(publicId) || publicId.startsWith('data:image')) return publicId;
   if (!state.cloudName) return null;
-  const folderPath = folder ? `${folder}/` : '';
-  return `https://res.cloudinary.com/${state.cloudName}/image/upload/f_webp,q_auto/${folderPath}${encodeURIComponent(publicId)}`;
+  return `https://res.cloudinary.com/${state.cloudName}/image/upload/f_webp,q_auto/${folder}/${encodeURIComponent(publicId)}`;
 }
 
 function fileToDataUrl(file){
