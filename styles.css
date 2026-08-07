@@ -399,17 +399,18 @@ tbody tr:hover td{ background: var(--surface-2); }
 /* Checkboxes de estado del pedido (aceptado / entregado / pendiente de
    pago / pagado) dentro de la tabla de seguimiento. */
 .estado-checks{
-  display:grid; grid-template-columns: repeat(3, minmax(0, auto)); gap:8px 12px;
-  align-items:center; margin-top: 4px;
+  display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:0;
+  max-width:100%;
 }
 .estado-check{
-  display:flex; align-items:center; gap:6px;
-  font-size:12px; color: var(--text-muted); cursor:pointer; padding: 8px 10px;
-  background: var(--surface); border:1px solid var(--border); border-radius: 12px;
+  display:flex; align-items:center; gap:5px;
+  font-size:11px; color: var(--text-muted); cursor:pointer; padding: 5px 8px;
+  background: var(--surface); border:1px solid var(--border); border-radius: 999px;
+  min-height: 28px; white-space: nowrap;
 }
 .estado-check:hover{ color: var(--text); border-color: var(--text-faint); }
 .estado-check input{
-  width:16px; height:16px; accent-color: var(--accent); cursor:pointer; flex-shrink:0;
+  width:14px; height:14px; accent-color: var(--accent); cursor:pointer; flex-shrink:0;
 }
 
 /* Pestañas: Pedidos (Nuevos / Guardados) y, anidadas dentro de Guardados,
@@ -442,6 +443,21 @@ tbody tr:hover td{ background: var(--surface-2); }
 /* Paneles dentro de la sección "Pedidos" (Nuevos / Guardados) */
 .pedidos-panel{ display:none; }
 .pedidos-panel.active{ display:block; animation: fadein .18s ease; }
+
+/* Ajuste compacto de la sección de pedidos para aprovechar mejor el espacio tanto en escritorio como en móvil. */
+#view-pedidos .view-header{ margin-bottom: 16px; }
+#view-pedidos .view-header p{ max-width: 100%; }
+#view-pedidos .seg-tabs{ margin-top: 10px; margin-bottom: 8px; gap:6px; }
+#view-pedidos .seg-tab{ padding: 7px 12px; font-size: 12.5px; }
+#view-pedidos .table-wrap{ border-radius: var(--radius-m); }
+#view-pedidos table{ font-size: 12.5px; }
+#view-pedidos thead th{ padding: 10px 11px; font-size: 10px; }
+#view-pedidos tbody td{ padding: 9px 11px; }
+#view-pedidos tbody tr{ transition: background .12s ease, transform .12s ease; }
+#view-pedidos tbody tr:hover{ transform: translateY(-1px); }
+#view-pedidos .row-actions{ gap: 4px; }
+#view-pedidos .row-actions .icon-btn{ width: 32px; height: 32px; font-size: 12px; }
+#view-pedidos .row-actions .btn-small{ padding: 6px 10px; }
 
 /* ============================================================
    Formularios / modales
@@ -607,9 +623,9 @@ textarea{ resize: vertical; }
   #view-pedidos tbody tr {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 10px;
-    padding: 16px;
-    margin-bottom: 14px;
+    gap: 8px;
+    padding: 12px 12px 13px;
+    margin-bottom: 10px;
     border: 1px solid var(--border);
     border-radius: var(--radius-m);
     background: var(--surface);
@@ -621,41 +637,42 @@ textarea{ resize: vertical; }
     padding: 0;
     border: none;
     color: var(--text);
-    font-size: 13px;
-    line-height: 1.45;
+    font-size: 12.5px;
+    line-height: 1.4;
   }
   #view-pedidos tbody td::before {
     content: attr(data-label);
     display: block;
-    margin-bottom: 4px;
-    font-size: 10.5px;
+    margin-bottom: 2px;
+    font-size: 10px;
     color: var(--text-faint);
     text-transform: uppercase;
     letter-spacing: .08em;
   }
   #view-pedidos tbody td:last-child {
-    margin-top: 4px;
+    margin-top: 2px;
   }
   #view-pedidos .row-actions {
     justify-content: flex-start;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 6px;
   }
   #view-pedidos .estado-checks {
+    display:grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
+    gap: 6px;
   }
   #view-pedidos .estado-check {
     justify-content: flex-start;
-    padding: 8px 10px;
+    padding: 6px 8px;
   }
   #view-pedidos .seg-tabs {
     gap: 6px;
     padding-bottom: 4px;
   }
   #view-pedidos .seg-tab {
-    font-size: 12.5px;
-    padding: 8px 12px;
+    font-size: 12px;
+    padding: 7px 10px;
   }
 
   #view-packs .table-wrap {
