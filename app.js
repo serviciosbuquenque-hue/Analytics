@@ -894,7 +894,7 @@ function renderPedidosGuardados(){
       <td data-label="Comprador">${escapeHtml(p.nombre_comprador || '—')}</td>
       <td data-label="Teléfono">${escapeHtml(p.telefono_comprador || '—')}</td>
       <td data-label="Total">$${Number(p.precio_compra_total || 0).toFixed(2)}</td>
-      <td data-label="Reincidente">${reincidente ? `<span class="pill pill-warn">Sí</span>` : `<span class="pill pill-no">No</span>`}</td>
+      <td data-label="Ya Compró">${reincidente ? `<span class="pill pill-warn">Sí</span>` : `<span class="pill pill-no">No</span>`}</td>
       <td data-label="Estado"><span class="pill ${marcador.cls}">${marcador.text}</span></td>`;
     tbody.appendChild(tr);
   });
@@ -975,7 +975,7 @@ function renderPedidosSeguimiento(){
       <td data-label="Comprador">${escapeHtml(p.nombre_comprador || '—')}</td>
       <td data-label="Teléfono">${escapeHtml(p.telefono_comprador || '—')}</td>
       <td data-label="Total">$${Number(p.precio_compra_total || 0).toFixed(2)}</td>
-      <td data-label="Reincidente">${reincidente ? `<span class="pill pill-warn">Sí</span>` : `<span class="pill pill-no">No</span>`}</td>
+      <td data-label="Ya Compró">${reincidente ? `<span class="pill pill-warn">Sí</span>` : `<span class="pill pill-no">No</span>`}</td>
       <td data-label="Estados">
         <div class="estado-checks" data-estados="${p.id}">
           ${ESTADO_FIELDS.map(f => {

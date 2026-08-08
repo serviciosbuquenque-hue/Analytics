@@ -11,7 +11,7 @@
   --text-muted: #8790a6;
   --text-faint: #545c72;
 
-  --accent: #f5a623;
+  --accent: #e42e2e;
   --accent-ink: #241705;
   --teal: #34d3c0;
   --red: #f0546a;
@@ -386,7 +386,7 @@ tbody tr:hover td{ background: var(--surface-2); }
 .pill{ display:inline-block; padding: 3px 10px; border-radius:999px; font-size: 11.5px; font-weight:600; }
 .pill-yes{ background: rgba(52,211,192,.14); color: var(--teal); }
 .pill-no{ background: var(--surface-3); color: var(--text-muted); }
-.pill-warn{ background: rgba(245,166,35,.14); color: var(--accent); }
+.pill-warn{ background: rgb(255 185 98 / 14%); color: #f0ba54; }
 .pill-danger{ background: rgba(240,84,106,.14); color: var(--red); }
 
 .row-actions{ display:flex; gap:6px; justify-content:flex-end; flex-wrap: wrap; }
@@ -406,7 +406,7 @@ tbody tr:hover td{ background: var(--surface-2); }
   display:flex; align-items:center; gap:5px;
   font-size:11px; color: var(--text-muted); cursor:pointer; padding: 5px 8px;
   background: var(--surface); border:1px solid var(--border); border-radius: 999px;
-  min-height: 28px; white-space: nowrap;
+  min-height: 28px; white-space: nowrap; flex-direction: row;
 }
 .estado-check:hover{ color: var(--text); border-color: var(--text-faint); }
 .estado-check input{
@@ -433,7 +433,7 @@ tbody tr:hover td{ background: var(--surface-2); }
   flex-shrink:0; white-space:nowrap;
 }
 .seg-tab:hover{ color: var(--text); border-color: var(--text-faint); }
-.seg-tab.active{ background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.seg-tab.active{ background: var(--accent); border-color: var(--accent); color: var(--text); }
 .seg-tab-count{
   background: rgba(0,0,0,.18); color: inherit; font-family: var(--font-mono);
   font-size:11px; padding:1px 7px; border-radius:999px; min-width:18px; text-align:center;
@@ -622,7 +622,7 @@ textarea{ resize: vertical; }
   }
   #view-pedidos tbody tr {
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: 2fr 1fr;
     gap: 8px;
     padding: 12px 12px 13px;
     margin-bottom: 10px;
@@ -812,12 +812,12 @@ textarea{ resize: vertical; }
 
   .detail-grid{ grid-template-columns: 100px 1fr; row-gap:6px; }
   .row-actions{ justify-content:flex-start; }
-  #view-pedidos .estado-checks{ grid-template-columns: 1fr; }
+  #view-pedidos .estado-checks{ grid-template-columns: 1fr 1fr; }
 }
 
 /* Teléfonos muy angostos (iPhone SE y similares) */
 @media (max-width: 360px){
-  .stat-grid{ grid-template-columns: 1fr; }
+  .stat-grid{ grid-template-columns: 1fr 1fr; gap:10px; }
   .brand h1{ font-size: 14px; }
   .btn{ padding: 9px 12px; font-size: 12.5px; }
 }
