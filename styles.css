@@ -169,6 +169,9 @@ code{ font-family: var(--font-mono); background: var(--surface-3); padding: .1em
 .stat-label{ font-size:12px; color: var(--text-muted); text-transform:uppercase; letter-spacing:.06em; }
 .stat-value{ font-family: var(--font-mono); font-size: 27px; font-weight:600; }
 .stat-card.accent .stat-value{ color: var(--accent); }
+.stat-value.growth-positive{ color: var(--teal); }
+.stat-value.growth-negative{ color: var(--red); }
+.stat-value.growth-neutral{ color: var(--text); }
 .stat-sub{ font-size:12px; color: var(--text-faint); }
 
 .panel-grid{ display:grid; grid-template-columns: 1.1fr 1fr; gap:14px; margin-bottom:14px; }
@@ -176,6 +179,7 @@ code{ font-family: var(--font-mono); background: var(--surface-3); padding: .1em
   background: var(--surface); border:1px solid var(--border); border-radius: var(--radius-m);
   padding: 16px; margin-bottom: 14px; box-shadow: var(--shadow-s);
 }
+.panel-box.fullwidth{ grid-column: 1 / -1; }
 .panel-box-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
 .panel-box-head h2{ font-size:13px; text-transform:uppercase; letter-spacing:.05em; color: var(--text-muted); }
 
@@ -185,6 +189,74 @@ code{ font-family: var(--font-mono); background: var(--surface-3); padding: .1em
 .mini-row .k{ color: var(--text-muted); }
 .mini-row .v{ font-family: var(--font-mono); }
 .mini-row:hover{ color: var(--text); }
+
+.sales-chart{
+  min-height: 280px;
+  display:flex;
+  flex-direction:column;
+  gap: 18px;
+  background: linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.01));
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: var(--radius-m);
+  padding: 18px;
+}
+.chart-legend{ display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:13px; color: var(--text-muted); }
+.chart-legend strong{ font-size: 15px; color: var(--text); }
+.chart-grid{
+  display:grid;
+  grid-template-columns: repeat(auto-fit, minmax(28px, 1fr));
+  gap: 22px;
+  align-items:end;
+  min-height: 190px;
+  position: relative;
+  padding-bottom: 18px;
+}
+.chart-grid::before{
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 18px;
+  top: 0;
+  background-image: linear-gradient(transparent 0%, transparent calc(100% - 24px), rgba(255,255,255,.06) calc(100% - 24px), rgba(255,255,255,.06) calc(100% - 23px), transparent calc(100% - 23px), transparent 100%);
+  pointer-events: none;
+}
+.chart-bar{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:flex-end;
+  gap: 8px;
+  position: relative;
+}
+.chart-bar-fill{
+  width: 100%;
+  background: linear-gradient(180deg, rgba(84,204,255,.95), rgba(54,126,255,.85));
+  border-radius: 999px 999px 0 0;
+  transition: height .25s ease;
+  min-height: 4px;
+}
+.chart-bar-value{
+  position: absolute;
+  top: -20px;
+  font-size: 10px;
+  color: var(--text);
+  white-space: nowrap;
+}
+.chart-bar span{
+  display:block;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.chart-empty{
+  color: var(--text-faint);
+  font-size: 13px;
+  padding: 24px 16px;
+  text-align: center;
+  border: 1px dashed rgba(255,255,255,.12);
+  border-radius: var(--radius-s);
+  background: rgba(255,255,255,.03);
+}
 
 /* ============================================================
    Buttons / inputs

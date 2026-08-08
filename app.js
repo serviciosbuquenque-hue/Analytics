@@ -773,6 +773,14 @@ function toBoolean(value){
   return value === true || value === 'true' || value === 1 || value === '1';
 }
 
+function getOriginalPedidoId(p){
+  return String(p.pedido_origen_id || p.id || '').trim();
+}
+
+function getPedidoFecha(p){
+  return p.fecha_registro_backend || p.fecha_asignacion || p.fecha_hora_entrada || null;
+}
+
 function normalizePedidoState(p){
   return {
     ...p,
@@ -937,14 +945,24 @@ const ESTADO_FIELDS = [
 // Esa es la línea que separa la pestaña "En proceso" de "Completados".
 function estadoPedidoKey(p){
   if (toBoolean(p.entregado) && toBoolean(p.pagado)) return 'completado';
-  if (toBoolean(p.aceptado) || toBoolean(p.entregado) || toBoolean(p.pendiente_pago) || toBoolean(p.pagado)) return 'proceso';
+  if (toBoolean(p.pagado) && !toBoolean(p.entregado)) return 'pagado';
+  if (toBoolean(p.aceptado) || toBoolean(p.entregado) || toBoolean(p.pendiente_pago)) return 'proceso';
   return 'pendiente';
 }
 const MARCADOR = {
   pendiente:  { text: 'Pendiente',  cls: 'pill-no' },
   proceso:    { text: 'En proceso', cls: 'pill-warn' },
+  pagado:     { text: 'Pagado',     cls: 'pill-yes' },
   completado: { text: 'Completado', cls: 'pill-yes' },
 };
+
+function isPedidoPagadoNoEntregado(p){
+  return toBoolean(p.pagado) && !toBoolean(p.entregado);
+}
+
+function isPedidoVisibleEnSeguimiento(p){
+  return !isPedidoPagadoNoEntregado(p);
+}
 
 // Pestaña activa dentro de "Guardados". 'proceso' agrupa pendiente + en
 // proceso (todo lo que todavía no está completado y pagado).
@@ -954,6 +972,7 @@ function renderPedidosSeguimiento(){
   const term = pedidosSearchTerm();
   const historial = [...state.pedidosNuevos, ...state.pedidosSeguimiento];
   const list = state.pedidosSeguimiento.filter(p => {
+    if (!isPedidoVisibleEnSeguimiento(p)) return false;
     const key = estadoPedidoKey(p);
     const enPestaña = segTabActual === 'completado' ? key === 'completado' : key !== 'completado';
     return enPestaña && coincideBusquedaPedido(p, term);
@@ -1053,7 +1072,7 @@ async function deletePedidoSeguimiento(id){
 function actualizarBadgesPedidos(){
   const nuevosCount = state.pedidosNuevos.length;
   const guardadosCount = state.pedidosSeguimiento.length;
-  const enProceso = state.pedidosSeguimiento.filter(p => estadoPedidoKey(p) !== 'completado').length;
+  const enProceso = state.pedidosSeguimiento.filter(p => isPedidoVisibleEnSeguimiento(p) && estadoPedidoKey(p) !== 'completado').length;
   const completados = state.pedidosSeguimiento.filter(p => estadoPedidoKey(p) === 'completado').length;
 
   document.getElementById('tab-count-nuevos').textContent = nuevosCount;
@@ -1062,7 +1081,7 @@ function actualizarBadgesPedidos(){
   document.getElementById('seg-count-proceso').textContent = enProceso;
   document.getElementById('seg-count-completado').textContent = completados;
   // Badge del sidebar: todo lo que todavía necesita atención (pedidos nuevos
-  // sin asignar + guardados en proceso).
+  // sin asignar + guardados en proceso no pagados).
   document.getElementById('badge-pedidos').textContent = nuevosCount + enProceso;
 }
 
@@ -1175,11 +1194,113 @@ function esDelMesActual(fechaStr){
   return f.getFullYear() === now.getFullYear() && f.getMonth() === now.getMonth();
 }
 
+function fechaAyer(fechaStr){
+  if (!fechaStr) return false;
+  const f = new Date(fechaStr);
+  if (isNaN(f)) return false;
+  const ayer = new Date();
+  ayer.setDate(ayer.getDate() - 1);
+  return f.getFullYear() === ayer.getFullYear() && f.getMonth() === ayer.getMonth() && f.getDate() === ayer.getDate();
+}
+
+function fechaHoy(fechaStr){
+  if (!fechaStr) return false;
+  const f = new Date(fechaStr);
+  if (isNaN(f)) return false;
+  const hoy = new Date();
+  return f.getFullYear() === hoy.getFullYear() && f.getMonth() === hoy.getMonth() && f.getDate() === hoy.getDate();
+}
+
+function esDelMesAnterior(fechaStr){
+  if (!fechaStr) return false;
+  const f = new Date(fechaStr);
+  if (isNaN(f)) return false;
+  const hoy = new Date();
+  const mesAnterior = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+  return f.getFullYear() === mesAnterior.getFullYear() && f.getMonth() === mesAnterior.getMonth();
+}
+
 function sumaCompras(pedidos){
   return pedidos.reduce((acc, p) => {
     const compras = Array.isArray(p.compras) ? p.compras : [];
     return acc + compras.reduce((a, c) => a + Number(c.quantity ?? c.cantidad ?? 1), 0);
   }, 0);
+}
+
+function parseTimeToSeconds(timeStr){
+  if (!timeStr) return null;
+  const parts = timeStr.replace('.', ':').split(':').map(x => Number(x.trim()));
+  if (parts.length !== 2 || parts.some(n => Number.isNaN(n))) return null;
+  return parts[0] * 3600 + parts[1] * 60;
+}
+
+function parseSessionDuration(u){
+  if (u == null) return 0;
+  if (typeof u === 'number' && !Number.isNaN(u)) return Number(u);
+  if (typeof u === 'string'){
+    const normalized = u.trim().replace(/\s+/g, ' ').toLowerCase();
+    const numeric = Number(normalized);
+    if (!Number.isNaN(numeric)) return numeric;
+
+    const rangeMatch = normalized.match(/(\d{1,2}[:.]\d{2})\s*(?:-|–|—|a|al|hasta)\s*(\d{1,2}[:.]\d{2})/);
+    if (rangeMatch){
+      const start = parseTimeToSeconds(rangeMatch[1]);
+      const end = parseTimeToSeconds(rangeMatch[2]);
+      if (start != null && end != null){
+        return end >= start ? end - start : (24 * 3600 - start + end);
+      }
+    }
+
+    const parts = normalized.split(':').map(x => Number(x.trim()));
+    if (parts.length === 3 && parts.every(n => !Number.isNaN(n))) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2 && parts.every(n => !Number.isNaN(n))) return parts[0] * 60 + parts[1];
+  }
+  return 0;
+}
+
+function formatDuration(seconds){
+  if (!seconds || seconds <= 0) return '—';
+  const horas = Math.floor(seconds / 3600);
+  const minutos = Math.round((seconds % 3600) / 60);
+  if (horas > 0) return `${horas}h ${minutos}m`;
+  return `${minutos}m`;
+}
+
+function renderVentasMesChart(pedidos){
+  const dias = [];
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const diasDelMes = new Date(year, month + 1, 0).getDate();
+  for (let d = 1; d <= diasDelMes; d++) {
+    dias.push({ dia: d, total: 0 });
+  }
+  pedidos.forEach(p => {
+    const fecha = new Date(getPedidoFecha(p));
+    if (isNaN(fecha) || fecha.getFullYear() !== year || fecha.getMonth() !== month) return;
+    const idx = fecha.getDate() - 1;
+    dias[idx].total += Number(p.precio_compra_total || 0);
+  });
+  const totalMax = Math.max(...dias.map(d => d.total), 1);
+  const hayVentas = dias.some(d => d.total > 0);
+  const bars = dias.map(day => {
+    const height = hayVentas ? Math.round((day.total / totalMax) * 100) : 4;
+    return `
+      <div class="chart-bar" title="${day.dia}: $${day.total.toFixed(2)}">
+        <div class="chart-bar-value">$${day.total.toFixed(0)}</div>
+        <div class="chart-bar-fill" style="height: ${height}%"></div>
+        <span>${day.dia}</span>
+      </div>`;
+  }).join('');
+  const chart = document.getElementById('resu-ventas-mes-chart');
+  if (chart){
+    chart.innerHTML = `
+      <div class="chart-legend">
+        <span>Ventas por día</span>
+        <strong>$${(hayVentas ? totalMax : 0).toFixed(2)}</strong>
+      </div>
+      ${hayVentas ? `<div class="chart-grid">${bars}</div>` : `<div class="chart-empty">No hay ventas registradas este mes.</div>`}`;
+  }
 }
 
 async function loadResumen(){
@@ -1192,40 +1313,75 @@ async function loadResumen(){
     const nuevos = nuevosData.pedidos || [];
     const asignados = asignadosData.pedidosAsignados || [];
     const usuarios = Array.isArray(estadisticasData) ? estadisticasData : [];
-    const todos = [...nuevos, ...asignados];
+    const asignadosIds = new Set(asignados.map(p => getOriginalPedidoId(p)));
+    const nuevosSinAsignar = nuevos.filter(p => !asignadosIds.has(getOriginalPedidoId(p)));
 
-    const delMes = todos.filter(p => esDelMesActual(p.fecha_registro_backend || p.fecha_asignacion));
+    const pedidosUnicosMap = new Map();
+    [...nuevosSinAsignar, ...asignados].forEach(p => {
+      const id = getOriginalPedidoId(p) || `tmp-${Math.random()}`;
+      if (!pedidosUnicosMap.has(id) || p.fecha_asignacion) {
+        pedidosUnicosMap.set(id, p);
+      }
+    });
+    const pedidosUnicos = Array.from(pedidosUnicosMap.values());
+
+    const delMes = pedidosUnicos.filter(p => esDelMesActual(getPedidoFecha(p)));
     const ventasMes = delMes.reduce((acc, p) => acc + Number(p.precio_compra_total || 0), 0);
+    const ventasHoy = pedidosUnicos.filter(p => fechaHoy(getPedidoFecha(p))).reduce((acc, p) => acc + Number(p.precio_compra_total || 0), 0);
+    const ventasAyer = pedidosUnicos.filter(p => fechaAyer(getPedidoFecha(p))).reduce((acc, p) => acc + Number(p.precio_compra_total || 0), 0);
+    const ventasMesAnterior = pedidosUnicos.filter(p => esDelMesAnterior(getPedidoFecha(p))).reduce((acc, p) => acc + Number(p.precio_compra_total || 0), 0);
     const productosVendidosMes = sumaCompras(delMes);
     const recurrentes = usuarios.filter(u => u.tipo_usuario === 'Recurrente').length;
     const seguimientoAbierto = asignados.filter(p => estadoPedidoKey(p) !== 'completado').length;
+    const allDurations = usuarios.map(u => parseSessionDuration(
+      u.horario_de_conexion ?? u.horario_conexion ?? u.horario ?? u.conexion_horario ?? u.hora_entrada ?? u.hora_salida ?? u.duracion ?? u.duration ?? u.tiempo ?? u.tiempo_conexion ?? u.sessionDuration ?? u.session_length ?? u.duracion_sesion
+    ));
+    const validDurations = allDurations.filter(v => v > 0);
+    const promedioSegundos = validDurations.length ? validDurations.reduce((a, b) => a + b, 0) / validDurations.length : 0;
+    const seguimientoNoPagado = asignados.filter(p => !toBoolean(p.pagado)).length;
+    const crecimientoPorcentaje = ventasMesAnterior > 0
+      ? ((ventasMes - ventasMesAnterior) / ventasMesAnterior) * 100
+      : (ventasMes > 0 ? null : 0);
+    const crecimientoTexto = crecimientoPorcentaje === null
+      ? 'Nuevo mes'
+      : crecimientoPorcentaje === 0
+        ? '0%'
+        : `${crecimientoPorcentaje > 0 ? '▲ +' : '▼ '}${Math.abs(crecimientoPorcentaje).toFixed(1)}%`;
+    const crecimientoClase = crecimientoPorcentaje > 0
+      ? 'growth-positive'
+      : crecimientoPorcentaje < 0
+        ? 'growth-negative'
+        : 'growth-neutral';
 
     document.getElementById('resu-ventas-mes').textContent = '$' + ventasMes.toFixed(2);
     document.getElementById('resu-pedidos-mes').textContent = delMes.length;
-    document.getElementById('resu-pedidos-nuevos').textContent = nuevos.length;
-    document.getElementById('resu-pedidos-seguimiento').textContent = asignados.length;
+    document.getElementById('resu-pedidos-nuevos').textContent = nuevosSinAsignar.length;
+    document.getElementById('resu-pedidos-seguimiento').textContent = seguimientoNoPagado;
+    document.getElementById('resu-crecimiento-mes').textContent = crecimientoTexto;
+    document.getElementById('resu-crecimiento-mes').className = `stat-value ${crecimientoClase}`;
+    document.getElementById('resu-ventas-ayer').textContent = '$' + ventasAyer.toFixed(2);
+    document.getElementById('resu-ventas-hoy').textContent = '$' + ventasHoy.toFixed(2);
+    document.getElementById('resu-promedio-conexion').textContent = formatDuration(promedioSegundos);
     document.getElementById('resu-productos-mes').textContent = productosVendidosMes;
     document.getElementById('resu-usuarios').textContent = usuarios.length;
     document.getElementById('resu-usuarios-sub').textContent = usuarios.length ? `${recurrentes} recurrentes` : '—';
 
-    // Pedidos más recientes (mezcla nuevos + asignados, ordenados por fecha)
-    const recientes = [...todos]
-      .sort((a, b) => new Date(b.fecha_registro_backend || b.fecha_asignacion || 0) - new Date(a.fecha_registro_backend || a.fecha_asignacion || 0))
+    const recientes = [...pedidosUnicos]
+      .sort((a, b) => new Date(getPedidoFecha(b)) - new Date(getPedidoFecha(a)))
       .slice(0, 6);
     const listaRecientes = document.getElementById('resu-recientes');
     listaRecientes.innerHTML = recientes.length ? recientes.map(p => `
-      <div class="mini-row" data-resu-pedido="${p.id}" style="cursor:pointer;">
+      <div class="mini-row" data-resu-pedido="${getOriginalPedidoId(p)}" style="cursor:pointer;">
         <span class="k">${escapeHtml(p.nombre_comprador || '—')}</span>
         <span class="v">$${Number(p.precio_compra_total || 0).toFixed(2)}</span>
       </div>`).join('') : `<p class="hint">Todavía no hay pedidos.</p>`;
     listaRecientes.querySelectorAll('[data-resu-pedido]').forEach(row => {
       row.addEventListener('click', () => {
-        const p = todos.find(x => x.id === row.dataset.resuPedido);
+        const p = pedidosUnicos.find(x => getOriginalPedidoId(x) === row.dataset.resuPedido);
         if (p) showPedidoDetalle(p);
       });
     });
 
-    // Orígenes de tráfico (a partir del registro de usuarios)
     const origenes = {};
     usuarios.forEach(u => {
       const key = u.origen || u.fuente_trafico || 'Desconocido';
@@ -1235,6 +1391,8 @@ async function loadResumen(){
     const origenesOrdenados = Object.entries(origenes).sort((a, b) => b[1] - a[1]).slice(0, 6);
     listaOrigenes.innerHTML = origenesOrdenados.length ? origenesOrdenados.map(([k, v]) => `
       <div class="mini-row"><span class="k">${escapeHtml(k)}</span><span class="v">${v}</span></div>`).join('') : `<p class="hint">Sin datos todavía.</p>`;
+
+    renderVentasMesChart(delMes);
   }catch(e){
     showToast('Error cargando el resumen: ' + e.message, true);
   }

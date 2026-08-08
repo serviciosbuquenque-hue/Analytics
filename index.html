@@ -85,14 +85,34 @@
           <span class="stat-sub">nuevos + guardados</span>
         </div>
         <div class="stat-card">
-          <span class="stat-label">Pedidos nuevos</span>
+          <span class="stat-label">Pedidos sin asignar</span>
           <span class="stat-value" id="resu-pedidos-nuevos">—</span>
-          <span class="stat-sub">pedidos sin asignar</span>
+          <span class="stat-sub">pedidos que aún no están en seguimiento</span>
         </div>
         <div class="stat-card">
-          <span class="stat-label">Seguimiento</span>
+          <span class="stat-label">Seguimiento no pagados</span>
           <span class="stat-value" id="resu-pedidos-seguimiento">—</span>
-          <span class="stat-sub">pedidos guardados en seguimiento</span>
+          <span class="stat-sub">pedidos en seguimiento sin pago confirmado</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Ventas ayer</span>
+          <span class="stat-value" id="resu-ventas-ayer">—</span>
+          <span class="stat-sub">total de ventas del día anterior</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Ventas hoy</span>
+          <span class="stat-value" id="resu-ventas-hoy">—</span>
+          <span class="stat-sub">total de ventas de hoy</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Crecimiento mensual</span>
+          <span class="stat-value" id="resu-crecimiento-mes">—</span>
+          <span class="stat-sub">comparado con el mes anterior</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Horas conexión</span>
+          <span class="stat-value" id="resu-promedio-conexion">—</span>
+          <span class="stat-sub">promedio por sesión</span>
         </div>
         <div class="stat-card">
           <span class="stat-label">Productos vendidos</span>
@@ -119,6 +139,13 @@
           </div>
           <div id="resu-origenes" class="mini-table">Cargando…</div>
         </div>
+      </div>
+
+      <div class="panel-box fullwidth">
+        <div class="panel-box-head">
+          <h2>Ventas del mes por día</h2>
+        </div>
+        <div class="sales-chart" id="resu-ventas-mes-chart">Cargando…</div>
       </div>
     </section>
 
