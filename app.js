@@ -14,7 +14,7 @@ const state = {
   prodImages: [],   // imágenes en edición del modal de producto (public_id o dataURL)
   packImages: [],   // imágenes en edición del modal de pack
   invTab: 'todos',  // pestaña activa en Inventario: todos | bajo | sin
-  stockUmbral: Number(localStorage.getItem('panel_stock_umbral') || 5),
+  stockUmbral: Number(localStorage.getItem('panel_stock_umbral') || 10),
   resumenRango: { preset: 'hoy', desde: null, hasta: null }, // rango activo en Resumen
 };
 
@@ -22,6 +22,21 @@ const state = {
 
 function apiUrlOk(){
   return state.apiUrl && state.apiUrl.trim().length > 0;
+}
+
+/* Helpers "seguros" para tocar el DOM: si el elemento no existe (por ejemplo
+   porque el móvil todavía tiene en caché una versión vieja de index.html/app.js
+   que no coincide entre sí), no se rompe todo el script con
+   "Cannot set properties of null". */
+function setText(id, value){
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
+  return el;
+}
+function setHtml(id, value){
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = value;
+  return el;
 }
 
 async function apiFetch(path, options = {}){
@@ -141,7 +156,7 @@ document.querySelectorAll('.modal-backdrop').forEach(el => {
 function setConnStatus(mode, text){
   const el = document.getElementById('connStatus');
   el.className = 'conn-status ' + mode;
-  document.getElementById('connStatusText').textContent = text;
+  setText('connStatusText', text);
 }
 
 async function testConnection(){
@@ -354,9 +369,9 @@ function renderProductos(){
 
   const conEstado = state.productos.map(p => ({ p, estado: estadoStockProducto(p) }));
   const { bajo, sin } = contarProductosPorStock();
-  document.getElementById('inv-count-todos').textContent = state.productos.length;
-  document.getElementById('inv-count-bajo').textContent = bajo;
-  document.getElementById('inv-count-sin').textContent = sin;
+  setText('inv-count-todos', state.productos.length);
+  setText('inv-count-bajo', bajo);
+  setText('inv-count-sin', sin);
   actualizarBadgeInventario();
 
   let filtrados = conEstado;
@@ -437,7 +452,7 @@ invUmbralInput.addEventListener('change', () => {
 
 function openProductoModal(id){
   const p = id ? state.productos.find(x => x.id === id) : null;
-  document.getElementById('prod-modal-title').textContent = p ? 'Editar producto' : 'Nuevo producto';
+  setText('prod-modal-title', p ? 'Editar producto' : 'Nuevo producto');
   document.getElementById('prod-id').value = p ? (p.id ?? '') : '';
   document.getElementById('prod-nombre').value = p ? (p.nombre ?? '') : '';
   document.getElementById('prod-categoria').value = p ? (p.categoria ?? '') : '';
@@ -620,7 +635,7 @@ document.getElementById('pack-new').addEventListener('click', () => openPackModa
 
 function openPackModal(id){
   const p = id ? state.packs.find(x => x.id === id) : null;
-  document.getElementById('pack-modal-title').textContent = p ? 'Editar pack' : 'Nuevo pack';
+  setText('pack-modal-title', p ? 'Editar pack' : 'Nuevo pack');
   document.getElementById('pack-id').value = p ? (p.id ?? '') : '';
   document.getElementById('pack-nombre').value = p ? (p.nombre ?? '') : '';
   document.getElementById('pack-categoria').value = p ? (p.categoria ?? 'Pack') : 'Pack';
@@ -1150,14 +1165,14 @@ function actualizarBadgesPedidos(){
   const enProceso = state.pedidosSeguimiento.filter(p => isPedidoVisibleEnSeguimiento(p) && estadoPedidoKey(p) !== 'completado').length;
   const completados = state.pedidosSeguimiento.filter(p => estadoPedidoKey(p) === 'completado').length;
 
-  document.getElementById('tab-count-nuevos').textContent = nuevosCount;
-  document.getElementById('tab-count-guardados').textContent = guardadosCount;
-  document.getElementById('tab-count-seguimiento').textContent = enProceso;
-  document.getElementById('seg-count-proceso').textContent = enProceso;
-  document.getElementById('seg-count-completado').textContent = completados;
+  setText('tab-count-nuevos', nuevosCount);
+  setText('tab-count-guardados', guardadosCount);
+  setText('tab-count-seguimiento', enProceso);
+  setText('seg-count-proceso', enProceso);
+  setText('seg-count-completado', completados);
   // Badge del sidebar: todo lo que todavía necesita atención (pedidos nuevos
   // sin asignar + guardados en proceso no pagados).
-  document.getElementById('badge-pedidos').textContent = nuevosCount + enProceso;
+  setText('badge-pedidos', nuevosCount + enProceso);
 }
 
 /* -------------------------- Detalle de pedido -------------------------- */
@@ -1552,33 +1567,35 @@ async function loadResumen(){
         ? 'growth-negative'
         : 'growth-neutral';
 
-    document.getElementById('resu-ventas-mes').textContent = '$' + ventasMes.toFixed(2);
-    document.getElementById('resu-pedidos-mes').textContent = delMes.length;
-    document.getElementById('resu-pedidos-nuevos').textContent = nuevosSinAsignar.length;
-    document.getElementById('resu-pedidos-seguimiento').textContent = seguimientoNoPagado;
-    document.getElementById('resu-crecimiento-mes').textContent = crecimientoTexto;
-    document.getElementById('resu-crecimiento-mes').className = `stat-value ${crecimientoClase}`;
-    document.getElementById('resu-ventas-ayer').textContent = '$' + ventasAyer.toFixed(2);
-    document.getElementById('resu-ventas-hoy').textContent = '$' + ventasHoy.toFixed(2);
-    document.getElementById('resu-productos-mes').textContent = productosVendidosMes;
-    document.getElementById('resu-usuarios').textContent = usuarios.length;
-    document.getElementById('resu-usuarios-sub').textContent = usuarios.length ? `${recurrentes} recurrentes` : '—';
+    setText('resu-ventas-mes', '$' + ventasMes.toFixed(2));
+    setText('resu-pedidos-mes', delMes.length);
+    setText('resu-pedidos-nuevos', nuevosSinAsignar.length);
+    setText('resu-pedidos-seguimiento', seguimientoNoPagado);
+    const elCrecimiento = setText('resu-crecimiento-mes', crecimientoTexto);
+    if (elCrecimiento) elCrecimiento.className = `stat-value ${crecimientoClase}`;
+    setText('resu-ventas-ayer', '$' + ventasAyer.toFixed(2));
+    setText('resu-ventas-hoy', '$' + ventasHoy.toFixed(2));
+    setText('resu-productos-mes', productosVendidosMes);
+    setText('resu-usuarios', usuarios.length);
+    setText('resu-usuarios-sub', usuarios.length ? `${recurrentes} recurrentes` : '—');
 
     const recientes = [...pedidosUnicos]
       .sort((a, b) => new Date(getPedidoFecha(b)) - new Date(getPedidoFecha(a)))
       .slice(0, 6);
     const listaRecientes = document.getElementById('resu-recientes');
-    listaRecientes.innerHTML = recientes.length ? recientes.map(p => `
-      <div class="mini-row" data-resu-pedido="${getOriginalPedidoId(p)}" style="cursor:pointer;">
-        <span class="k">${escapeHtml(p.nombre_comprador || '—')}</span>
-        <span class="v">$${Number(p.precio_compra_total || 0).toFixed(2)}</span>
-      </div>`).join('') : `<p class="hint">Todavía no hay pedidos.</p>`;
-    listaRecientes.querySelectorAll('[data-resu-pedido]').forEach(row => {
-      row.addEventListener('click', () => {
-        const p = pedidosUnicos.find(x => getOriginalPedidoId(x) === row.dataset.resuPedido);
-        if (p) showPedidoDetalle(p);
+    if (listaRecientes){
+      listaRecientes.innerHTML = recientes.length ? recientes.map(p => `
+        <div class="mini-row" data-resu-pedido="${getOriginalPedidoId(p)}" style="cursor:pointer;">
+          <span class="k">${escapeHtml(p.nombre_comprador || '—')}</span>
+          <span class="v">$${Number(p.precio_compra_total || 0).toFixed(2)}</span>
+        </div>`).join('') : `<p class="hint">Todavía no hay pedidos.</p>`;
+      listaRecientes.querySelectorAll('[data-resu-pedido]').forEach(row => {
+        row.addEventListener('click', () => {
+          const p = pedidosUnicos.find(x => getOriginalPedidoId(x) === row.dataset.resuPedido);
+          if (p) showPedidoDetalle(p);
+        });
       });
-    });
+    }
 
     const origenes = {};
     usuarios.forEach(u => {
@@ -1586,9 +1603,11 @@ async function loadResumen(){
       origenes[key] = (origenes[key] || 0) + 1;
     });
     const listaOrigenes = document.getElementById('resu-origenes');
-    const origenesOrdenados = Object.entries(origenes).sort((a, b) => b[1] - a[1]).slice(0, 6);
-    listaOrigenes.innerHTML = origenesOrdenados.length ? origenesOrdenados.map(([k, v]) => `
-      <div class="mini-row"><span class="k">${escapeHtml(k)}</span><span class="v">${v}</span></div>`).join('') : `<p class="hint">Sin datos todavía.</p>`;
+    if (listaOrigenes){
+      const origenesOrdenados = Object.entries(origenes).sort((a, b) => b[1] - a[1]).slice(0, 6);
+      listaOrigenes.innerHTML = origenesOrdenados.length ? origenesOrdenados.map(([k, v]) => `
+        <div class="mini-row"><span class="k">${escapeHtml(k)}</span><span class="v">${v}</span></div>`).join('') : `<p class="hint">Sin datos todavía.</p>`;
+    }
 
     renderVentasMesChart(delMes);
 
@@ -1612,8 +1631,8 @@ async function loadResumen(){
 
     /* ---------------- Stock bajo / sin stock ---------------- */
     const { bajo: bajoCount, sin: sinCount } = contarProductosPorStock();
-    document.getElementById('resu-stock-bajo').textContent = bajoCount;
-    document.getElementById('resu-stock-sin').textContent = sinCount;
+    setText('resu-stock-bajo', bajoCount);
+    setText('resu-stock-sin', sinCount);
     const listaStock = document.getElementById('resu-stock-lista');
     if (listaStock){
       const conProblema = state.productos
@@ -1637,11 +1656,11 @@ async function loadResumen(){
     const ventasRango = pedidosEnRango.reduce((acc, p) => acc + Number(p.precio_compra_total || 0), 0);
     const productosRango = sumaCompras(pedidosEnRango);
     const ticketPromedio = pedidosEnRango.length ? ventasRango / pedidosEnRango.length : 0;
-    document.getElementById('resu-rango-ventas').textContent = '$' + ventasRango.toFixed(2);
-    document.getElementById('resu-rango-label').textContent = etiqueta;
-    document.getElementById('resu-rango-pedidos').textContent = pedidosEnRango.length;
-    document.getElementById('resu-rango-productos').textContent = productosRango;
-    document.getElementById('resu-rango-ticket').textContent = '$' + ticketPromedio.toFixed(2);
+    setText('resu-rango-ventas', '$' + ventasRango.toFixed(2));
+    setText('resu-rango-label', etiqueta);
+    setText('resu-rango-pedidos', pedidosEnRango.length);
+    setText('resu-rango-productos', productosRango);
+    setText('resu-rango-ticket', '$' + ticketPromedio.toFixed(2));
 
     /* ---------------- Horas buenas de entrada ---------------- */
     renderHorasConexionChart(usuarios);
