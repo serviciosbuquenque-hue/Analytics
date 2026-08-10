@@ -13,6 +13,9 @@ const state = {
   usuarios: [],
   prodImages: [],   // imágenes en edición del modal de producto (public_id o dataURL)
   packImages: [],   // imágenes en edición del modal de pack
+  invTab: 'todos',  // pestaña activa en Inventario: todos | bajo | sin
+  stockUmbral: Number(localStorage.getItem('panel_stock_umbral') || 5),
+  resumenRango: { preset: 'hoy', desde: null, hasta: null }, // rango activo en Resumen
 };
 
 /* ---------------------------- Helpers de red ---------------------------- */
@@ -319,18 +322,68 @@ function populateProductoCategoriasDropdown(){
     categorias.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
 }
 
+// Estado de stock de un producto, solo tiene sentido si "aplicar_stock" está
+// habilitado (si no, el stock guardado es informativo y no se avisa de nada).
+function estadoStockProducto(p){
+  if (!p.aplicar_stock) return 'na';
+  const stock = Number(p.stock ?? 0);
+  if (stock <= 0) return 'sin';
+  if (stock <= state.stockUmbral) return 'bajo';
+  return 'ok';
+}
+
+function contarProductosPorStock(){
+  let bajo = 0, sin = 0;
+  state.productos.forEach(p => {
+    const estado = estadoStockProducto(p);
+    if (estado === 'bajo') bajo++;
+    if (estado === 'sin') sin++;
+  });
+  return { bajo, sin };
+}
+
+function actualizarBadgeInventario(){
+  const { sin } = contarProductosPorStock();
+  const badge = document.getElementById('badge-inventario');
+  if (badge) badge.textContent = sin;
+}
+
 function renderProductos(){
   const term = document.getElementById('inv-search').value.trim().toLowerCase();
   const grid = document.getElementById('inv-grid');
-  const list = state.productos.filter(p => !term || (p.nombre || '').toLowerCase().includes(term));
+
+  const conEstado = state.productos.map(p => ({ p, estado: estadoStockProducto(p) }));
+  const { bajo, sin } = contarProductosPorStock();
+  document.getElementById('inv-count-todos').textContent = state.productos.length;
+  document.getElementById('inv-count-bajo').textContent = bajo;
+  document.getElementById('inv-count-sin').textContent = sin;
+  actualizarBadgeInventario();
+
+  let filtrados = conEstado;
+  if (state.invTab === 'bajo') filtrados = conEstado.filter(x => x.estado === 'bajo');
+  if (state.invTab === 'sin') filtrados = conEstado.filter(x => x.estado === 'sin');
+
+  const list = filtrados
+    .map(x => x.p)
+    .filter(p => !term || (p.nombre || '').toLowerCase().includes(term));
+
   grid.innerHTML = '';
   document.getElementById('inv-empty').hidden = list.length !== 0;
 
   list.forEach(p => {
     const imgUrl = cloudinaryUrl((p.imagenes || [])[0]);
+    const estado = estadoStockProducto(p);
     const card = document.createElement('article');
-    card.className = 'product-card';
+    card.className = 'product-card' + (estado === 'bajo' ? ' stock-bajo' : estado === 'sin' ? ' stock-sin' : '') + (p.aplicar_stock ? ' stock-control-on' : ' stock-control-off');
     const available = p.disponibilidad !== false;
+    const stockPill = estado === 'sin'
+      ? `<span class="pill pill-danger">Sin stock</span>`
+      : estado === 'bajo'
+        ? `<span class="pill pill-warn">Stock bajo</span>`
+        : '';
+    const controlPill = p.aplicar_stock
+      ? `<span class="pill pill-control-on">Control stock</span>`
+      : `<span class="pill pill-control-off">Sin control</span>`;
     card.innerHTML = `
       <div class="product-card-img">${imgUrl ? `<img src="${imgUrl}" alt="${escapeHtml(p.nombre)}">` : `<div class="thumb-placeholder">📦</div>`}</div>
       <div class="product-card-body">
@@ -339,11 +392,14 @@ function renderProductos(){
             <h3>${escapeHtml(p.nombre)}</h3>
             <p class="product-card-category">${escapeHtml(p.categoria || '—')}</p>
           </div>
-          <span class="pill ${available ? 'pill-yes' : 'pill-no'}">${available ? 'Disponible' : 'Oculto'}</span>
+          <div class="product-card-statuses">
+            <span class="pill ${available ? 'pill-yes' : 'pill-no'}">${available ? 'Disponible' : 'Oculto'}</span>
+            ${controlPill}
+          </div>
         </div>
         <div class="product-card-meta">
           <div><span>Precio</span><strong>$${Number(p.precio || 0).toFixed(2)}</strong></div>
-          <div><span>Stock</span><strong>${p.stock ?? 0}</strong></div>
+          <div><span>Stock</span><strong>${p.stock ?? 0} ${stockPill}</strong></div>
           <div><span>Oferta</span><strong>${p.oferta ? `-${p.descuento || 0}%` : 'No'}</strong></div>
           <div><span>Más vendido</span><strong>${p.mas_vendido ? 'Sí' : 'No'}</strong></div>
         </div>
@@ -362,6 +418,23 @@ function renderProductos(){
 document.getElementById('inv-search').addEventListener('input', renderProductos);
 document.getElementById('inv-new').addEventListener('click', () => openProductoModal(null));
 
+document.querySelectorAll('#inv-tabs [data-itab]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    state.invTab = btn.dataset.itab;
+    document.querySelectorAll('#inv-tabs [data-itab]').forEach(b => b.classList.toggle('active', b === btn));
+    renderProductos();
+  });
+});
+
+const invUmbralInput = document.getElementById('inv-umbral');
+invUmbralInput.value = state.stockUmbral;
+invUmbralInput.addEventListener('change', () => {
+  const val = Math.max(0, Number(invUmbralInput.value || 0));
+  state.stockUmbral = val;
+  localStorage.setItem('panel_stock_umbral', String(val));
+  renderProductos();
+});
+
 function openProductoModal(id){
   const p = id ? state.productos.find(x => x.id === id) : null;
   document.getElementById('prod-modal-title').textContent = p ? 'Editar producto' : 'Nuevo producto';
@@ -377,6 +450,7 @@ function openProductoModal(id){
   document.getElementById('prod-descripcion').value = p ? (p.descripcion ?? '') : '';
   document.getElementById('prod-precio').value = p ? (p.precio ?? 0) : '';
   document.getElementById('prod-stock').value = p ? (p.stock ?? 0) : '';
+  document.getElementById('prod-aplicar-stock').checked = p ? !!p.aplicar_stock : false;
   document.getElementById('prod-oferta').checked = p ? !!p.oferta : false;
   const productoDisponible = p
     ? (p.disponibilidad !== undefined ? p.disponibilidad !== false : p.disponible !== false)
@@ -451,6 +525,7 @@ document.getElementById('prod-save').addEventListener('click', async () => {
     descripcion: document.getElementById('prod-descripcion').value.trim(),
     precio: Number(document.getElementById('prod-precio').value || 0),
     stock: Number(document.getElementById('prod-stock').value || 0),
+    aplicar_stock: document.getElementById('prod-aplicar-stock').checked,
     descuento,
     oferta,
     disponible: disponibilidadValue,
@@ -1234,11 +1309,11 @@ function parseTimeToSeconds(timeStr){
   return parts[0] * 3600 + parts[1] * 60;
 }
 
-function parseSessionDuration(u){
-  if (u == null) return 0;
-  if (typeof u === 'number' && !Number.isNaN(u)) return Number(u);
-  if (typeof u === 'string'){
-    const normalized = u.trim().replace(/\s+/g, ' ').toLowerCase();
+function parseDurationValue(val){
+  if (val == null) return 0;
+  if (typeof val === 'number' && !Number.isNaN(val)) return Number(val);
+  if (typeof val === 'string'){
+    const normalized = val.trim().replace(/\s+/g, ' ').toLowerCase();
     const numeric = Number(normalized);
     if (!Number.isNaN(numeric)) return numeric;
 
@@ -1256,6 +1331,33 @@ function parseSessionDuration(u){
     if (parts.length === 2 && parts.every(n => !Number.isNaN(n))) return parts[0] * 60 + parts[1];
   }
   return 0;
+}
+
+// El backend guarda la duración real de la sesión en
+// "duracion_sesion_segundos" (número de segundos) — ese es el campo que hoy
+// devuelve /obtener-estadisticas, así que es la fuente principal. El resto
+// de nombres de campo se mantienen solo como respaldo por si el registro
+// viene de una versión anterior del frontend de la tienda.
+function parseSessionDuration(u){
+  if (u == null) return 0;
+  if (typeof u === 'object' && u.duracion_sesion_segundos != null){
+    const val = Number(u.duracion_sesion_segundos);
+    if (!Number.isNaN(val) && val > 0) return val;
+  }
+  if (typeof u !== 'object') return parseDurationValue(u);
+  const candidato = u.horario_de_conexion ?? u.horario_conexion ?? u.horario ?? u.conexion_horario ?? u.duracion ?? u.duration ?? u.tiempo ?? u.tiempo_conexion ?? u.sessionDuration ?? u.session_length ?? u.duracion_sesion;
+  return parseDurationValue(candidato);
+}
+
+// Hora de entrada (0-23) de un registro de usuario, para saber a qué horas
+// del día suele conectarse la gente. Usa "fecha_hora_entrada"
+// (formato "yyyy-MM-dd HH:mm:ss", hora de Cuba) tal como lo guarda el backend.
+function horaDeEntrada(u){
+  const f = u && (u.fecha_hora_entrada || u.fecha_hora || u.fecha);
+  if (!f) return null;
+  const fecha = new Date(String(f).replace(' ', 'T'));
+  if (isNaN(fecha)) return null;
+  return fecha.getHours();
 }
 
 function formatDuration(seconds){
@@ -1281,38 +1383,137 @@ function renderVentasMesChart(pedidos){
     const idx = fecha.getDate() - 1;
     dias[idx].total += Number(p.precio_compra_total || 0);
   });
-  const totalMax = Math.max(...dias.map(d => d.total), 1);
   const hayVentas = dias.some(d => d.total > 0);
-  const bars = dias.map(day => {
-    const height = hayVentas ? Math.round((day.total / totalMax) * 100) : 4;
-    return `
-      <div class="chart-bar" title="${day.dia}: $${day.total.toFixed(2)}">
-        <div class="chart-bar-value">$${day.total.toFixed(0)}</div>
-        <div class="chart-bar-fill" style="height: ${height}%"></div>
-        <span>${day.dia}</span>
-      </div>`;
-  }).join('');
+  const cards = dias.map(day => `
+    <div class="chart-card" title="Día ${day.dia}: $${day.total.toFixed(2)}">
+      <span class="chart-card-day">${day.dia}</span>
+      <span class="chart-card-value"${day.total > 0 ? '' : ' data-zero="true"'}>$${day.total.toFixed(2)}</span>
+    </div>`).join('');
   const chart = document.getElementById('resu-ventas-mes-chart');
   if (chart){
     chart.innerHTML = `
       <div class="chart-legend">
         <span>Ventas por día</span>
-        <strong>$${(hayVentas ? totalMax : 0).toFixed(2)}</strong>
+        <strong>${hayVentas ? `${dias.filter(d => d.total > 0).length} días con ventas` : 'Sin ventas'}</strong>
       </div>
-      ${hayVentas ? `<div class="chart-grid">${bars}</div>` : `<div class="chart-empty">No hay ventas registradas este mes.</div>`}`;
+      ${hayVentas ? `<div class="chart-grid-cards">${cards}</div>` : `<div class="chart-empty">No hay ventas registradas este mes.</div>`}`;
   }
+}
+
+function renderHorasConexionChart(usuarios){
+  const horas = Array.from({ length: 24 }, (_, h) => ({ hora: h, total: 0 }));
+  for (let i = 0; i < usuarios.length; i++) {
+    const h = horaDeEntrada(usuarios[i]);
+    if (h != null) horas[h].total++;
+  }
+  const hayDatos = horas.some(h => h.total > 0);
+  const mejorHora = hayDatos ? horas.reduce((a, b) => (b.total > a.total ? b : a)) : null;
+  const max = hayDatos ? Math.max(...horas.map(h => h.total)) : 1;
+  const cards = horas.map(h => {
+    const width = hayDatos ? Math.max(10, Math.round((h.total / max) * 100)) : 10;
+    return `
+      <div class="hour-card" title="${h.hora}:00 — ${h.total} visita(s)">
+        <div class="hour-card-top">
+          <span class="hour-card-hour">${h.hora}:00</span>
+          <span class="hour-card-count">${h.total}</span>
+        </div>
+        <div class="hour-card-bar" style="width:${width}%"></div>
+      </div>`;
+  }).join('');
+  const chart = document.getElementById('resu-horas-chart');
+  if (!chart) return;
+  chart.innerHTML = `
+    <div class="chart-legend">
+      <span>Visitas por hora del día (hora de Cuba)</span>
+      <strong>${mejorHora ? `Pico: ${mejorHora.hora}:00 h` : '—'}</strong>
+    </div>
+    ${hayDatos ? `<div class="hour-grid">${cards}</div>` : `<div class="chart-empty">Todavía no hay registros suficientes para calcular horas pico.</div>`}`;
+}
+
+// Fechas límite (inclusive) de un rango, según el preset elegido o un rango
+// personalizado. Devuelve objetos Date normalizados a inicio/fin de día.
+function calcularRangoFechas(){
+  const { preset, desde, hasta } = state.resumenRango;
+  const hoy = new Date();
+  const inicioDia = (d) => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
+  const finDia = (d) => { const x = new Date(d); x.setHours(23,59,59,999); return x; };
+
+  if (preset === 'custom' && desde && hasta){
+    return { desde: inicioDia(new Date(desde)), hasta: finDia(new Date(hasta)), etiqueta: `${desde} a ${hasta}` };
+  }
+  if (preset === 'ayer'){
+    const ayer = new Date(hoy); ayer.setDate(ayer.getDate() - 1);
+    return { desde: inicioDia(ayer), hasta: finDia(ayer), etiqueta: 'Ayer' };
+  }
+  if (preset === '7dias'){
+    const inicio = new Date(hoy); inicio.setDate(inicio.getDate() - 6);
+    return { desde: inicioDia(inicio), hasta: finDia(hoy), etiqueta: 'Últimos 7 días' };
+  }
+  if (preset === '30dias'){
+    const inicio = new Date(hoy); inicio.setDate(inicio.getDate() - 29);
+    return { desde: inicioDia(inicio), hasta: finDia(hoy), etiqueta: 'Últimos 30 días' };
+  }
+  if (preset === 'mes'){
+    const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+    return { desde: inicioDia(inicio), hasta: finDia(hoy), etiqueta: 'Este mes' };
+  }
+  if (preset === 'mesanterior'){
+    const inicio = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+    const fin = new Date(hoy.getFullYear(), hoy.getMonth(), 0);
+    return { desde: inicioDia(inicio), hasta: finDia(fin), etiqueta: 'Mes anterior' };
+  }
+  // 'hoy' por defecto
+  return { desde: inicioDia(hoy), hasta: finDia(hoy), etiqueta: 'Hoy' };
+}
+
+function renderRangoChart(pedidosEnRango, desde, hasta){
+  const dias = [];
+  const cursor = new Date(desde);
+  cursor.setHours(0,0,0,0);
+  const fin = new Date(hasta);
+  fin.setHours(0,0,0,0);
+  while (cursor <= fin && dias.length < 62){
+    dias.push({ fecha: new Date(cursor), total: 0 });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  pedidosEnRango.forEach(p => {
+    const fecha = new Date(getPedidoFecha(p));
+    if (isNaN(fecha)) return;
+    const dia = dias.find(d => d.fecha.getFullYear() === fecha.getFullYear() && d.fecha.getMonth() === fecha.getMonth() && d.fecha.getDate() === fecha.getDate());
+    if (dia) dia.total += Number(p.precio_compra_total || 0);
+  });
+  const hayVentas = dias.some(d => d.total > 0);
+  const cards = dias.map(day => {
+    const label = `${day.fecha.getDate()}/${day.fecha.getMonth() + 1}`;
+    return `
+      <div class="chart-card" title="${label}: $${day.total.toFixed(2)}">
+        <span class="chart-card-day">${label}</span>
+        <span class="chart-card-value"${day.total > 0 ? '' : ' data-zero="true"'}>$${day.total.toFixed(2)}</span>
+      </div>`;
+  }).join('');
+  const chart = document.getElementById('resu-rango-chart');
+  if (!chart) return;
+  chart.innerHTML = dias.length ? `
+    <div class="chart-legend">
+      <span>Ventas por día</span>
+      <strong>${hayVentas ? 'Detalle del rango' : 'Sin ventas'}</strong>
+    </div>
+    ${hayVentas ? `<div class="chart-grid-cards">${cards}</div>` : `<div class="chart-empty">No hay ventas registradas en este rango.</div>`}`
+    : `<div class="chart-empty">Selecciona un rango válido.</div>`;
 }
 
 async function loadResumen(){
   try{
-    const [nuevosData, asignadosData, estadisticasData] = await Promise.all([
+    const [nuevosData, asignadosData, estadisticasData, productosData] = await Promise.all([
       apiFetch('/api/pedidos'),
       apiFetch('/api/pedidos-asignados').catch(() => ({ pedidosAsignados: [] })),
-      apiFetch('/obtener-estadisticas').catch(() => [])
+      apiFetch('/obtener-estadisticas').catch(() => []),
+      apiFetch('/api/products').catch(() => ({ products: [] }))
     ]);
     const nuevos = nuevosData.pedidos || [];
     const asignados = asignadosData.pedidosAsignados || [];
     const usuarios = Array.isArray(estadisticasData) ? estadisticasData : [];
+    if (Array.isArray(productosData.products)) state.productos = productosData.products;
     const asignadosIds = new Set(asignados.map(p => getOriginalPedidoId(p)));
     const nuevosSinAsignar = nuevos.filter(p => !asignadosIds.has(getOriginalPedidoId(p)));
 
@@ -1333,9 +1534,7 @@ async function loadResumen(){
     const productosVendidosMes = sumaCompras(delMes);
     const recurrentes = usuarios.filter(u => u.tipo_usuario === 'Recurrente').length;
     const seguimientoAbierto = asignados.filter(p => estadoPedidoKey(p) !== 'completado').length;
-    const allDurations = usuarios.map(u => parseSessionDuration(
-      u.horario_de_conexion ?? u.horario_conexion ?? u.horario ?? u.conexion_horario ?? u.hora_entrada ?? u.hora_salida ?? u.duracion ?? u.duration ?? u.tiempo ?? u.tiempo_conexion ?? u.sessionDuration ?? u.session_length ?? u.duracion_sesion
-    ));
+    const allDurations = usuarios.map(u => parseSessionDuration(u));
     const validDurations = allDurations.filter(v => v > 0);
     const promedioSegundos = validDurations.length ? validDurations.reduce((a, b) => a + b, 0) / validDurations.length : 0;
     const seguimientoNoPagado = asignados.filter(p => !toBoolean(p.pagado)).length;
@@ -1361,7 +1560,6 @@ async function loadResumen(){
     document.getElementById('resu-crecimiento-mes').className = `stat-value ${crecimientoClase}`;
     document.getElementById('resu-ventas-ayer').textContent = '$' + ventasAyer.toFixed(2);
     document.getElementById('resu-ventas-hoy').textContent = '$' + ventasHoy.toFixed(2);
-    document.getElementById('resu-promedio-conexion').textContent = formatDuration(promedioSegundos);
     document.getElementById('resu-productos-mes').textContent = productosVendidosMes;
     document.getElementById('resu-usuarios').textContent = usuarios.length;
     document.getElementById('resu-usuarios-sub').textContent = usuarios.length ? `${recurrentes} recurrentes` : '—';
@@ -1393,10 +1591,101 @@ async function loadResumen(){
       <div class="mini-row"><span class="k">${escapeHtml(k)}</span><span class="v">${v}</span></div>`).join('') : `<p class="hint">Sin datos todavía.</p>`;
 
     renderVentasMesChart(delMes);
+
+    /* ---------------- Productos más vendidos (del mes) ---------------- */
+    const ventasPorProducto = new Map();
+    delMes.forEach(p => {
+      const compras = Array.isArray(p.compras) ? p.compras : [];
+      compras.forEach(c => {
+        const nombre = c.name || c.nombre || 'Producto sin nombre';
+        const cantidad = Number(c.quantity ?? c.cantidad ?? 1) || 0;
+        ventasPorProducto.set(nombre, (ventasPorProducto.get(nombre) || 0) + cantidad);
+      });
+    });
+    const topProductos = Array.from(ventasPorProducto.entries()).sort((a, b) => b[1] - a[1]).slice(0, 6);
+    const listaTopProductos = document.getElementById('resu-top-productos');
+    if (listaTopProductos){
+      listaTopProductos.innerHTML = topProductos.length ? topProductos.map(([nombre, cant]) => `
+        <div class="mini-row"><span class="k">${escapeHtml(nombre)}</span><span class="v">${cant} und.</span></div>`).join('')
+        : `<p class="hint">Sin ventas este mes todavía.</p>`;
+    }
+
+    /* ---------------- Stock bajo / sin stock ---------------- */
+    const { bajo: bajoCount, sin: sinCount } = contarProductosPorStock();
+    document.getElementById('resu-stock-bajo').textContent = bajoCount;
+    document.getElementById('resu-stock-sin').textContent = sinCount;
+    const listaStock = document.getElementById('resu-stock-lista');
+    if (listaStock){
+      const conProblema = state.productos
+        .map(p => ({ p, estado: estadoStockProducto(p) }))
+        .filter(x => x.estado === 'sin' || x.estado === 'bajo')
+        .sort((a, b) => (a.estado === b.estado ? Number(a.p.stock) - Number(b.p.stock) : (a.estado === 'sin' ? -1 : 1)))
+        .slice(0, 6);
+      listaStock.innerHTML = conProblema.length ? conProblema.map(({ p, estado }) => `
+        <div class="mini-row">
+          <span class="k">${escapeHtml(p.nombre)}</span>
+          <span class="v">${estado === 'sin' ? `<span class="pill pill-danger">Sin stock</span>` : `<span class="pill pill-warn">${p.stock} und.</span>`}</span>
+        </div>`).join('') : `<p class="hint">Todo el inventario con control de stock está en buen nivel.</p>`;
+    }
+
+    /* ---------------- Rango de fechas seleccionado ---------------- */
+    const { desde, hasta, etiqueta } = calcularRangoFechas();
+    const pedidosEnRango = pedidosUnicos.filter(p => {
+      const fecha = new Date(getPedidoFecha(p));
+      return !isNaN(fecha) && fecha >= desde && fecha <= hasta;
+    });
+    const ventasRango = pedidosEnRango.reduce((acc, p) => acc + Number(p.precio_compra_total || 0), 0);
+    const productosRango = sumaCompras(pedidosEnRango);
+    const ticketPromedio = pedidosEnRango.length ? ventasRango / pedidosEnRango.length : 0;
+    document.getElementById('resu-rango-ventas').textContent = '$' + ventasRango.toFixed(2);
+    document.getElementById('resu-rango-label').textContent = etiqueta;
+    document.getElementById('resu-rango-pedidos').textContent = pedidosEnRango.length;
+    document.getElementById('resu-rango-productos').textContent = productosRango;
+    document.getElementById('resu-rango-ticket').textContent = '$' + ticketPromedio.toFixed(2);
+
+    /* ---------------- Horas buenas de entrada ---------------- */
+    renderHorasConexionChart(usuarios);
   }catch(e){
     showToast('Error cargando el resumen: ' + e.message, true);
   }
 }
+
+/* ---------------- Filtro de rango de fechas (Resumen) ---------------- */
+
+document.querySelectorAll('#resu-rango-presets [data-rango]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    state.resumenRango = { preset: btn.dataset.rango, desde: null, hasta: null };
+    document.querySelectorAll('#resu-rango-presets [data-rango]').forEach(b => b.classList.toggle('active', b === btn));
+    document.getElementById('resu-desde').value = '';
+    document.getElementById('resu-hasta').value = '';
+    loadResumen();
+  });
+});
+
+document.getElementById('resu-rango-aplicar')?.addEventListener('click', () => {
+  const desde = document.getElementById('resu-desde').value;
+  const hasta = document.getElementById('resu-hasta').value;
+  if (!desde || !hasta){
+    showToast('Selecciona fecha de inicio y de fin.', true);
+    return;
+  }
+  if (desde > hasta){
+    showToast('La fecha "Desde" no puede ser posterior a "Hasta".', true);
+    return;
+  }
+  state.resumenRango = { preset: 'custom', desde, hasta };
+  document.querySelectorAll('#resu-rango-presets [data-rango]').forEach(b => b.classList.remove('active'));
+  loadResumen();
+});
+
+document.querySelectorAll('[data-goto-inv]').forEach(card => {
+  card.addEventListener('click', () => {
+    const tab = card.dataset.gotoInv;
+    goToView('inventario');
+    const btn = document.querySelector(`#inv-tabs [data-itab="${tab}"]`);
+    if (btn) btn.click();
+  });
+});
 
 const resumenBtn = document.querySelector('.nav-item[data-view="resumen"]');
 if (resumenBtn) resumenBtn.addEventListener('click', loadResumen);

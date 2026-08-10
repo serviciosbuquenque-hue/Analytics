@@ -32,6 +32,7 @@
       </button>
       <button class="nav-item" data-view="inventario">
         <span class="nav-ico">📦</span> Inventario
+        <span class="nav-badge" id="badge-inventario">0</span>
       </button>
       <button class="nav-item" data-view="packs">
         <span class="nav-ico">🎁</span> Packs
@@ -73,7 +74,7 @@
         <p>Ventas del mes, productos vendidos y usuarios de la tienda.</p>
       </header>
 
-      <div class="stat-grid">
+      <div class="stat-grid" id="resu-stat-grid-principal">
         <div class="stat-card accent">
           <span class="stat-label">Ventas del mes</span>
           <span class="stat-value" id="resu-ventas-mes">—</span>
@@ -110,11 +111,6 @@
           <span class="stat-sub">comparado con el mes anterior</span>
         </div>
         <div class="stat-card">
-          <span class="stat-label">Horas conexión</span>
-          <span class="stat-value" id="resu-promedio-conexion">—</span>
-          <span class="stat-sub">promedio por sesión</span>
-        </div>
-        <div class="stat-card">
           <span class="stat-label">Productos vendidos</span>
           <span class="stat-value" id="resu-productos-mes">—</span>
           <span class="stat-sub">unidades este mes</span>
@@ -123,6 +119,60 @@
           <span class="stat-label">Usuarios registrados</span>
           <span class="stat-value" id="resu-usuarios">—</span>
           <span class="stat-sub" id="resu-usuarios-sub">—</span>
+        </div>
+        <div class="stat-card stat-card-clickable" id="resu-card-bajo-stock" data-goto-inv="bajo">
+          <span class="stat-label">Stock bajo</span>
+          <span class="stat-value" id="resu-stock-bajo">—</span>
+          <span class="stat-sub">productos por agotarse</span>
+        </div>
+        <div class="stat-card stat-card-clickable" id="resu-card-sin-stock" data-goto-inv="sin">
+          <span class="stat-label">Sin stock</span>
+          <span class="stat-value" id="resu-stock-sin">—</span>
+          <span class="stat-sub">productos agotados</span>
+        </div>
+      </div>
+
+      <div class="panel-box fullwidth resu-filtro-box">
+        <div class="panel-box-head">
+          <h2>Filtrar por rango de fechas</h2>
+        </div>
+        <div class="resu-filtro-row">
+          <div class="seg-tabs" id="resu-rango-presets">
+            <button class="seg-tab active" data-rango="hoy">Hoy</button>
+            <button class="seg-tab" data-rango="ayer">Ayer</button>
+            <button class="seg-tab" data-rango="7dias">Últimos 7 días</button>
+            <button class="seg-tab" data-rango="30dias">Últimos 30 días</button>
+            <button class="seg-tab" data-rango="mes">Este mes</button>
+            <button class="seg-tab" data-rango="mesanterior">Mes anterior</button>
+          </div>
+          <div class="resu-filtro-custom">
+            <label>Desde <input type="date" id="resu-desde"></label>
+            <label>Hasta <input type="date" id="resu-hasta"></label>
+            <button class="btn btn-ghost btn-small" id="resu-rango-aplicar">Aplicar rango</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="stat-grid" id="resu-rango-stats">
+        <div class="stat-card accent">
+          <span class="stat-label">Ventas en el rango</span>
+          <span class="stat-value" id="resu-rango-ventas">—</span>
+          <span class="stat-sub" id="resu-rango-label">—</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Pedidos en el rango</span>
+          <span class="stat-value" id="resu-rango-pedidos">—</span>
+          <span class="stat-sub">pedidos con fecha dentro del rango</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Productos vendidos</span>
+          <span class="stat-value" id="resu-rango-productos">—</span>
+          <span class="stat-sub">unidades dentro del rango</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Ticket promedio</span>
+          <span class="stat-value" id="resu-rango-ticket">—</span>
+          <span class="stat-sub">venta promedio por pedido</span>
         </div>
       </div>
 
@@ -141,11 +191,34 @@
         </div>
       </div>
 
+      <div class="panel-grid">
+        <div class="panel-box">
+          <div class="panel-box-head">
+            <h2>Productos más vendidos</h2>
+          </div>
+          <div id="resu-top-productos" class="mini-table">Cargando…</div>
+        </div>
+        <div class="panel-box">
+          <div class="panel-box-head">
+            <h2>Stock bajo / agotado</h2>
+          </div>
+          <div id="resu-stock-lista" class="mini-table">Cargando…</div>
+        </div>
+      </div>
+
       <div class="panel-box fullwidth">
         <div class="panel-box-head">
           <h2>Ventas del mes por día</h2>
         </div>
         <div class="sales-chart" id="resu-ventas-mes-chart">Cargando…</div>
+      </div>
+
+      <div class="panel-box fullwidth">
+        <div class="panel-box-head">
+          <h2>Horas buenas de entrada de usuarios</h2>
+          <span class="hint" style="margin:0;">Cantidad de visitas por hora del día, según el registro de usuarios</span>
+        </div>
+        <div class="sales-chart" id="resu-horas-chart">Cargando…</div>
       </div>
     </section>
 
@@ -220,7 +293,15 @@
         <p>Productos del catálogo: precio, stock, ofertas e imágenes.</p>
         <div class="header-actions">
           <input type="search" id="inv-search" class="search" placeholder="Buscar producto...">
+          <label class="umbral-field">Umbral stock bajo
+            <input type="number" id="inv-umbral" min="0" step="1">
+          </label>
           <button class="btn btn-primary" id="inv-new">+ Nuevo producto</button>
+        </div>
+        <div class="seg-tabs" id="inv-tabs">
+          <button class="seg-tab active" data-itab="todos">Todos <span class="seg-tab-count" id="inv-count-todos">0</span></button>
+          <button class="seg-tab" data-itab="bajo">Stock bajo <span class="seg-tab-count" id="inv-count-bajo">0</span></button>
+          <button class="seg-tab" data-itab="sin">Sin stock <span class="seg-tab-count" id="inv-count-sin">0</span></button>
         </div>
       </header>
       <div class="table-wrap">
@@ -381,6 +462,7 @@
             <input type="number" id="prod-stock" placeholder="0">
           </label>
         </div>
+        <label class="check"><input type="checkbox" id="prod-aplicar-stock"> Controlar stock de este producto (descuenta unidades automáticamente al recibir pedidos y permite ver bajo stock / sin stock)</label>
       </div>
 
       <div class="modal-section">
