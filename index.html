@@ -7,6 +7,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-pPcjE2LjuMjPVq00N58WilL0mNB0gU+3i5Q+I3BjOXDyPnDCTpDpYt3w5kRKgaV/c+3efClx8ryzhkXvYl5FQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.svg">
+<meta name="theme-color" content="#0b0e14">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Analytics">
 <link rel="stylesheet" href="styles.css?v=2">
 </head>
 <body>
@@ -594,6 +600,32 @@
       <div class="spacer"></div>
       <button class="btn btn-ghost" data-close="modal-pack">Cancelar</button>
       <button class="btn btn-primary" id="pack-save">Guardar</button>
+    </footer>
+  </div>
+</div>
+
+<!-- ===================== MODAL DETALLE DE IMAGEN ===================== -->
+<div class="modal-backdrop" id="modal-image-detail">
+  <div class="modal modal-image-detail">
+    <header class="modal-header">
+      <h3>Detalle de imagen</h3>
+      <button class="modal-close" data-close="modal-image-detail">✕</button>
+    </header>
+    <div class="modal-body image-detail-body">
+      <div class="image-detail-preview">
+        <img id="img-detail-preview" src="" alt="Detalle de imagen">
+      </div>
+      <div class="image-detail-grid">
+        <div><strong>Nombre / public_id</strong><span id="img-detail-name">—</span></div>
+        <div><strong>Cloudinary</strong><span id="img-detail-cloud">—</span></div>
+        <div><strong>Formato real</strong><span id="img-detail-format">—</span></div>
+        <div><strong>Tamaño</strong><span id="img-detail-size">—</span></div>
+        <div><strong>Dimensiones</strong><span id="img-detail-dimensions">—</span></div>
+        <div class="image-detail-url"><strong>URL</strong><a id="img-detail-url" href="#" target="_blank" rel="noopener noreferrer">—</a></div>
+      </div>
+    </div>
+    <footer class="modal-footer">
+      <button class="btn btn-ghost" data-close="modal-image-detail">Cerrar</button>
     </footer>
   </div>
 </div>

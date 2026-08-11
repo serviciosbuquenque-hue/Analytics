@@ -549,8 +549,32 @@ code{ font-family: var(--font-mono); background: var(--surface-3); padding: .1em
   display:flex; align-items:center; justify-content:center;
   background: var(--surface);
   overflow:hidden;
+  position: relative;
 }
 .product-card-img img{ width:100%; height:100%; object-fit:cover; }
+.product-card-img .image-meta{
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(0,0,0,.55);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.3;
+  text-align: center;
+  backdrop-filter: blur(4px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.product-card-img .image-meta.image-meta-large,
+.thumb-label.image-meta-large{
+  background: rgba(240,84,106,.88);
+  color: #fff;
+}
 .product-card-body{ padding: 16px; display:flex; flex-direction:column; gap: 12px; min-height: 0; }
 .product-card-title{ display:flex; justify-content:space-between; align-items:flex-start; gap: 10px; }
 .product-card-title h3{ font-size: 15px; margin:0; line-height:1.2; }
@@ -602,6 +626,31 @@ tbody tr:hover td{ background: var(--surface-2); }
 .thumb-placeholder{
   width:68px; height:68px; min-width: 68px; border-radius:14px; background: var(--surface-2); border:1px solid var(--border);
   display:flex; align-items:center; justify-content:center; color: var(--text-faint); font-size:18px;
+}
+
+.thumb-wrap{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:6px;
+}
+
+.thumb-label{
+  color: var(--text);
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 999px;
+  padding: 5px 8px;
+  font-size: 11px;
+  text-align: center;
+  line-height: 1.3;
+  max-width: 100px;
+  word-break: break-word;
+}
+
+.thumb-label.image-meta-large{
+  background: rgba(240,84,106,.88);
+  color: #fff;
 }
 
 .pack-included{
@@ -759,12 +808,28 @@ textarea{ resize: vertical; }
   position:relative; width:88px; height:88px; border-radius: var(--radius-s); overflow:hidden;
   border: 1px solid var(--border); background: var(--surface-2);
 }
-.image-tile img{ width:100%; height:100%; object-fit:cover; }
+.image-tile img{ width:100%; height:100%; object-fit:cover; cursor:pointer; touch-action: manipulation; }
+.image-tile img.clickable-image{ display:block; width:100%; height:100%; }
+.product-card-img img, .thumb, .thumb-wrap img{ touch-action: manipulation; cursor: pointer; }
 .image-tile .rm{
   position:absolute; top:4px; right:4px; background: rgba(0,0,0,.65);
   color:#fff; border:none; width:20px; height:20px; border-radius:50%;
   font-size:11px; cursor:pointer; line-height:1;
 }
+
+.modal-image-detail{ max-width: 560px; }
+.image-detail-body{ display:grid; gap:18px; }
+.image-detail-preview{
+  background: var(--surface-2); border:1px solid var(--border); border-radius: var(--radius-m);
+  overflow:hidden; min-height: 220px; display:flex; align-items:center; justify-content:center;
+}
+.image-detail-preview img{ width:100%; height:auto; max-height: 360px; object-fit:contain; }
+.image-detail-grid{ display:grid; gap:12px; font-size: 13px; }
+.image-detail-grid div{ display:flex; flex-direction:column; gap:4px; }
+.image-detail-grid strong{ color: var(--text-faint); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+.image-detail-grid span,
+.image-detail-grid a{ color: var(--text); font-family: var(--font-mono); word-break: break-all; font-size: 13px; }
+.image-detail-url a{ color: var(--accent); text-decoration: none; }
 
 .detail-grid{ display:grid; grid-template-columns: 130px 1fr; row-gap:8px; font-size:13px; }
 .detail-grid dt{ color: var(--text-faint); }
@@ -949,6 +1014,20 @@ textarea{ resize: vertical; }
     height: 100px;
     border-radius: 18px;
   }
+.thumb-wrap{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:6px;
+}
+.thumb-label{
+  color: var(--text-faint);
+  font-size: 10px;
+  text-align: center;
+  line-height: 1.3;
+  max-width: 100px;
+  word-break: break-word;
+}
   #view-packs tbody td:nth-child(2) {
     font-weight: 700;
     line-height: 1.3;

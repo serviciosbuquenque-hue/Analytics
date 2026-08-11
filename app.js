@@ -67,6 +67,164 @@ function showToast(msg, isError = false){
   showToast._t = setTimeout(() => { t.className = 'toast'; }, 3200);
 }
 
+function inferImageFormat(url){
+  if (!url) return 'IMG';
+  const path = url.split('?')[0].split('#')[0];
+  const extMatch = path.match(/\.(jpg|jpeg|png|webp|gif|svg)(?:$|\?|#)/i);
+  if (extMatch) return extMatch[1].toUpperCase();
+  if (url.includes('/f_webp/')) return 'WEBP';
+  if (url.includes('/f_png/')) return 'PNG';
+  if (url.includes('/f_jpg/') || url.includes('/f_jpeg/')) return 'JPG';
+  return 'IMG';
+}
+
+function formatBytes(bytes){
+  if (!bytes || bytes < 0) return '0 B';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+async function fetchImageSize(url){
+  if (!url) return null;
+  try {
+    const res = await fetch(url, { method: 'HEAD', mode: 'cors' });
+    if (res.ok) {
+      const contentLength = res.headers.get('content-length');
+      if (contentLength) return Number(contentLength);
+    }
+  } catch (err) {
+    // No pasa nada, se intentará con GET.
+  }
+  try {
+    const res = await fetch(url, { method: 'GET', mode: 'cors' });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return blob.size;
+  } catch (err) {
+    return null;
+  }
+}
+
+function parseCloudinaryUrl(url){
+  try {
+    const parsed = new URL(url);
+    const isCloudinary = parsed.hostname.endsWith('cloudinary.com');
+    if (!isCloudinary) return null;
+    const path = parsed.pathname.split('/').filter(Boolean);
+    const uploadIndex = path.indexOf('upload');
+    if (uploadIndex < 0) return null;
+    const afterUpload = path.slice(uploadIndex + 1);
+    let folder = '';
+    let publicId = '';
+    let transformations = '';
+    const knownFolders = ['products', 'packs'];
+    if (afterUpload.length === 0) return null;
+    if (knownFolders.includes(afterUpload[0])) {
+      folder = afterUpload[0];
+      publicId = afterUpload.slice(1).join('/');
+    } else if (afterUpload.length > 1 && knownFolders.includes(afterUpload[1])) {
+      transformations = afterUpload[0];
+      folder = afterUpload[1];
+      publicId = afterUpload.slice(2).join('/');
+    } else {
+      publicId = afterUpload.join('/');
+    }
+    const extension = publicId ? (publicId.split('.').pop().toUpperCase() || null) : null;
+    const format = extension || (transformations.includes('f_webp') ? 'WEBP' : transformations.includes('f_png') ? 'PNG' : transformations.includes('f_jpg') ? 'JPG' : 'IMG');
+    return {
+      cloudName: parsed.hostname.split('.')[0],
+      folder,
+      publicId,
+      format,
+      transformations,
+      url: parsed.href,
+      origin: 'cloudinary'
+    };
+  } catch (err) {
+    return null;
+  }
+}
+
+async function setImageMetaInfo(img, labelEl){
+  if (!img || !labelEl) return;
+  const format = inferImageFormat(img.currentSrc || img.src || '');
+  const width = img.naturalWidth;
+  const height = img.naturalHeight;
+  let text = format;
+  if (width && height) {
+    text += ` · ${width}×${height}`;
+  }
+  const size = await fetchImageSize(img.currentSrc || img.src || '');
+  if (size) {
+    text += ` · ${formatBytes(size)}`;
+    labelEl.classList.toggle('image-meta-large', size > 200 * 1024);
+  }
+  labelEl.textContent = text;
+}
+
+function getImageDetailPayload(source, folder = 'products'){
+  const url = cloudinaryUrl(source, folder);
+  const cloudinaryInfo = url ? parseCloudinaryUrl(url) : null;
+  return {
+    source: source || '—',
+    url: url || source || '—',
+    cloudName: cloudinaryInfo?.cloudName || '—',
+    folder: cloudinaryInfo?.folder || folder || '—',
+    publicId: cloudinaryInfo?.publicId || (source && source.startsWith('data:') ? 'Embedded data URL' : '—'),
+    format: cloudinaryInfo?.format || inferImageFormat(url || source || ''),
+    width: 0,
+    height: 0,
+    size: null
+  };
+}
+
+async function showImageDetail(source, folder = 'products'){
+  const payload = getImageDetailPayload(source, folder);
+  const imgPreview = document.getElementById('img-detail-preview');
+  const nameEl = document.getElementById('img-detail-name');
+  const cloudEl = document.getElementById('img-detail-cloud');
+  const formatEl = document.getElementById('img-detail-format');
+  const sizeEl = document.getElementById('img-detail-size');
+  const dimEl = document.getElementById('img-detail-dimensions');
+  const urlEl = document.getElementById('img-detail-url');
+
+  imgPreview.alt = payload.publicId || 'Vista previa de imagen';
+  nameEl.textContent = payload.publicId;
+  cloudEl.textContent = payload.cloudName !== '—' ? `${payload.cloudName}/${payload.folder}` : '—';
+  formatEl.textContent = payload.format;
+  sizeEl.textContent = 'Cargando...';
+  dimEl.textContent = 'Cargando...';
+  urlEl.href = payload.url;
+  urlEl.textContent = payload.url;
+
+  imgPreview.onload = async () => {
+    dimEl.textContent = `${imgPreview.naturalWidth}×${imgPreview.naturalHeight}`;
+    const size = await fetchImageSize(payload.url);
+    if (size) {
+      sizeEl.textContent = formatBytes(size);
+    } else {
+      sizeEl.textContent = 'Desconocido';
+    }
+  };
+  imgPreview.onerror = () => {
+    dimEl.textContent = 'No disponible';
+    sizeEl.textContent = 'No disponible';
+  };
+
+  imgPreview.src = payload.url;
+  openModal('modal-image-detail');
+}
+
+function installServiceWorker(){
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.register('./sw.js')
+    .then(() => console.log('Service worker registrado.'))
+    .catch(() => console.warn('No se pudo registrar el service worker.'));
+}
+
+installServiceWorker();
+
 // folder: 'products' para inventario, 'packs' para packs — Cloudinary
 // guarda cada tipo en una carpeta distinta y hay que respetarla al construir
 // la URL o la imagen simplemente no existe en esa ruta.
@@ -400,7 +558,10 @@ function renderProductos(){
       ? `<span class="pill pill-control-on">Control stock</span>`
       : `<span class="pill pill-control-off">Sin control</span>`;
     card.innerHTML = `
-      <div class="product-card-img">${imgUrl ? `<img src="${imgUrl}" alt="${escapeHtml(p.nombre)}">` : `<div class="thumb-placeholder">📦</div>`}</div>
+      <div class="product-card-img">
+        ${imgUrl ? `<img class="product-thumb" src="${imgUrl}" alt="${escapeHtml(p.nombre)}">` : `<div class="thumb-placeholder">📦</div>`}
+        ${imgUrl ? `<div class="image-meta">Cargando...</div>` : ''}
+      </div>
       <div class="product-card-body">
         <div class="product-card-title">
           <div>
@@ -424,6 +585,22 @@ function renderProductos(){
         </div>
       </div>`;
     grid.appendChild(card);
+
+    const imgEl = card.querySelector('img.product-thumb');
+    const labelEl = card.querySelector('.image-meta');
+    if (imgEl && labelEl) {
+      const updateMeta = () => setImageMetaInfo(imgEl, labelEl);
+      imgEl.addEventListener('load', updateMeta);
+      imgEl.addEventListener('error', () => { labelEl.textContent = 'Imagen no disponible'; });
+      imgEl.style.cursor = 'pointer';
+      const openDetail = () => showImageDetail((p.imagenes || [])[0], 'products');
+      imgEl.addEventListener('click', openDetail);
+      imgEl.addEventListener('touchend', openDetail);
+      imgEl.addEventListener('pointerup', openDetail);
+      if (imgEl.complete && imgEl.naturalWidth) {
+        updateMeta();
+      }
+    }
   });
 
   grid.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openProductoModal(b.dataset.edit)));
@@ -496,7 +673,24 @@ function renderImageGrid(gridId, images, folder = 'products'){
     const url = cloudinaryUrl(img, folder);
     const tile = document.createElement('div');
     tile.className = 'image-tile';
-    tile.innerHTML = `${url ? `<img src="${url}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'thumb-placeholder',textContent:'⚠'}))">` : `<div class="thumb-placeholder">🖼</div>`}<button class="rm" data-idx="${idx}">✕</button>`;
+    if (url) {
+      const imgEl = document.createElement('img');
+      imgEl.src = url;
+      imgEl.alt = 'Imagen';
+      imgEl.className = 'clickable-image';
+      imgEl.addEventListener('click', () => showImageDetail(img, folder));
+      imgEl.addEventListener('error', () => {
+        imgEl.replaceWith(Object.assign(document.createElement('div'), { className: 'thumb-placeholder', textContent: '⚠' }));
+      });
+      tile.appendChild(imgEl);
+    } else {
+      tile.innerHTML = `<div class="thumb-placeholder">🖼</div>`;
+    }
+    const rm = document.createElement('button');
+    rm.className = 'rm';
+    rm.dataset.idx = String(idx);
+    rm.textContent = '✕';
+    tile.appendChild(rm);
     grid.appendChild(tile);
   });
   grid.querySelectorAll('.rm').forEach(btn => {
@@ -611,7 +805,12 @@ function renderPacks(){
       ? `<ul class="pack-features">${caracteristicas.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`
       : '—';
     tr.innerHTML = `
-      <td data-label="Imagen">${imgUrl ? `<img class="thumb" src="${imgUrl}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'thumb-placeholder',textContent:'⚠'}))">` : `<div class="thumb-placeholder">🎁</div>`}</td>
+      <td data-label="Imagen">
+        <div class="thumb-wrap">
+          ${imgUrl ? `<img class="thumb" src="${imgUrl}" alt="${escapeHtml(p.nombre)}">` : `<div class="thumb-placeholder">🎁</div>`}
+          <div class="thumb-label">${imgUrl ? 'Cargando...' : 'Sin imagen'}</div>
+        </div>
+      </td>
       <td data-label="Nombre">${escapeHtml(p.nombre)}</td>
       <td data-label="Categoría">${escapeHtml(p.categoria || '—')}</td>
       <td data-label="Precio">$${Number(p.precio || 0).toFixed(2)}</td>
@@ -624,6 +823,21 @@ function renderPacks(){
         </div>
       </td>`;
     tbody.appendChild(tr);
+    const thumbImg = tr.querySelector('img.thumb');
+    const thumbLabel = tr.querySelector('.thumb-label');
+    if (thumbImg && thumbLabel) {
+      const updateMeta = () => setImageMetaInfo(thumbImg, thumbLabel);
+      thumbImg.addEventListener('load', updateMeta);
+      thumbImg.addEventListener('error', () => { thumbLabel.textContent = 'Imagen no disponible'; });
+      thumbImg.style.cursor = 'pointer';
+      const openPackDetail = () => showImageDetail((p.imagenes || [])[0] || p.imagen, 'packs');
+      thumbImg.addEventListener('click', openPackDetail);
+      thumbImg.addEventListener('touchend', openPackDetail);
+      thumbImg.addEventListener('pointerup', openPackDetail);
+      if (thumbImg.complete && thumbImg.naturalWidth) {
+        updateMeta();
+      }
+    }
   });
 
   tbody.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openPackModal(b.dataset.edit)));
