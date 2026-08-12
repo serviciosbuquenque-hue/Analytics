@@ -570,6 +570,33 @@ code{ font-family: var(--font-mono); background: var(--surface-3); padding: .1em
   text-overflow: ellipsis;
   pointer-events: none;
 }
+.product-card-img .img-detail-btn{
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0,0,0,.55);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+  transition: background .2s, transform .2s;
+  z-index: 2;
+}
+.product-card-img .img-detail-btn:hover{
+  background: rgba(0,0,0,.75);
+  transform: scale(1.1);
+}
+.product-card-img .img-detail-btn:active{
+  transform: scale(.95);
+}
 .product-card-img .image-meta.image-meta-large,
 .thumb-label.image-meta-large{
   background: rgba(240,84,106,.88);
@@ -810,7 +837,8 @@ textarea{ resize: vertical; }
 }
 .image-tile img{ width:100%; height:100%; object-fit:cover; cursor:pointer; touch-action: manipulation; }
 .image-tile img.clickable-image{ display:block; width:100%; height:100%; }
-.product-card-img img, .thumb, .thumb-wrap img{ touch-action: manipulation; cursor: pointer; }
+.product-card-img img{ touch-action: manipulation; }
+.thumb, .thumb-wrap img{ touch-action: manipulation; cursor: pointer; }
 .image-tile .rm{
   position:absolute; top:4px; right:4px; background: rgba(0,0,0,.65);
   color:#fff; border:none; width:20px; height:20px; border-radius:50%;

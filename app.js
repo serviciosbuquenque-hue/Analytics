@@ -623,6 +623,7 @@ function renderProductos(){
       <div class="product-card-img">
         ${imgUrl ? `<img class="product-thumb" src="${imgUrl}" alt="${escapeHtml(p.nombre)}">` : `<div class="thumb-placeholder">📦</div>`}
         ${imgUrl ? `<div class="image-meta">Cargando...</div>` : ''}
+        ${imgUrl ? `<button class="img-detail-btn" title="Ver detalle de imagen" data-img-detail="${p.id}">🔍</button>` : ''}
       </div>
       <div class="product-card-body">
         <div class="product-card-title">
@@ -654,12 +655,16 @@ function renderProductos(){
       const updateMeta = () => setImageMetaInfo(imgEl, labelEl);
       imgEl.addEventListener('load', updateMeta);
       imgEl.addEventListener('error', () => { labelEl.textContent = 'Imagen no disponible'; });
-      imgEl.style.cursor = 'pointer';
-      const openDetail = () => showImageDetail((p.imagenes || [])[0], 'products');
-      attachImageTapListener(imgEl, openDetail);
       if (imgEl.complete && imgEl.naturalWidth) {
         updateMeta();
       }
+    }
+    const detailBtn = card.querySelector('[data-img-detail]');
+    if (detailBtn) {
+      detailBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showImageDetail((p.imagenes || [])[0], 'products');
+      });
     }
   });
 
