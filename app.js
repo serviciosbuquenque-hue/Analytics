@@ -163,6 +163,68 @@ async function setImageMetaInfo(img, labelEl){
   labelEl.textContent = text;
 }
 
+function attachImageTapListener(imgEl, onTap){
+  let startX = null;
+  let startY = null;
+  let moved = false;
+  let suppressClick = false;
+  const THRESHOLD = 10;
+
+  const clear = () => {
+    startX = null;
+    startY = null;
+    moved = false;
+    suppressClick = false;
+  };
+
+  const onPointerDown = (ev) => {
+    if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+    startX = ev.clientX;
+    startY = ev.clientY;
+    moved = false;
+    suppressClick = false;
+    if (imgEl.setPointerCapture) {
+      try { imgEl.setPointerCapture(ev.pointerId); } catch (e) { }
+    }
+  };
+
+  const onPointerMove = (ev) => {
+    if (startX === null || startY === null) return;
+    if (Math.abs(ev.clientX - startX) > THRESHOLD || Math.abs(ev.clientY - startY) > THRESHOLD) {
+      moved = true;
+      suppressClick = true;
+    }
+  };
+
+  const onPointerUp = (ev) => {
+    if (startX === null || startY === null) return;
+    if (imgEl.releasePointerCapture) {
+      try { imgEl.releasePointerCapture(ev.pointerId); } catch (e) { }
+    }
+    if (!moved) {
+      onTap();
+      suppressClick = true;
+    }
+    clear();
+  };
+
+  const onPointerCancel = clear;
+
+  const onClick = (ev) => {
+    if (suppressClick) {
+      suppressClick = false;
+      return;
+    }
+    onTap();
+  };
+
+  imgEl.addEventListener('pointerdown', onPointerDown);
+  imgEl.addEventListener('pointermove', onPointerMove);
+  imgEl.addEventListener('pointerup', onPointerUp);
+  imgEl.addEventListener('pointercancel', onPointerCancel);
+  imgEl.addEventListener('click', onClick);
+}
+
 function getImageDetailPayload(source, folder = 'products'){
   const url = cloudinaryUrl(source, folder);
   const cloudinaryInfo = url ? parseCloudinaryUrl(url) : null;
@@ -594,9 +656,7 @@ function renderProductos(){
       imgEl.addEventListener('error', () => { labelEl.textContent = 'Imagen no disponible'; });
       imgEl.style.cursor = 'pointer';
       const openDetail = () => showImageDetail((p.imagenes || [])[0], 'products');
-      imgEl.addEventListener('click', openDetail);
-      imgEl.addEventListener('touchend', openDetail);
-      imgEl.addEventListener('pointerup', openDetail);
+      attachImageTapListener(imgEl, openDetail);
       if (imgEl.complete && imgEl.naturalWidth) {
         updateMeta();
       }
@@ -831,9 +891,7 @@ function renderPacks(){
       thumbImg.addEventListener('error', () => { thumbLabel.textContent = 'Imagen no disponible'; });
       thumbImg.style.cursor = 'pointer';
       const openPackDetail = () => showImageDetail((p.imagenes || [])[0] || p.imagen, 'packs');
-      thumbImg.addEventListener('click', openPackDetail);
-      thumbImg.addEventListener('touchend', openPackDetail);
-      thumbImg.addEventListener('pointerup', openPackDetail);
+      attachImageTapListener(thumbImg, openPackDetail);
       if (thumbImg.complete && thumbImg.naturalWidth) {
         updateMeta();
       }
