@@ -163,68 +163,6 @@ async function setImageMetaInfo(img, labelEl){
   labelEl.textContent = text;
 }
 
-function attachImageTapListener(imgEl, onTap){
-  let startX = null;
-  let startY = null;
-  let moved = false;
-  let suppressClick = false;
-  const THRESHOLD = 10;
-
-  const clear = () => {
-    startX = null;
-    startY = null;
-    moved = false;
-    suppressClick = false;
-  };
-
-  const onPointerDown = (ev) => {
-    if (ev.pointerType === 'mouse' && ev.button !== 0) return;
-    startX = ev.clientX;
-    startY = ev.clientY;
-    moved = false;
-    suppressClick = false;
-    if (imgEl.setPointerCapture) {
-      try { imgEl.setPointerCapture(ev.pointerId); } catch (e) { }
-    }
-  };
-
-  const onPointerMove = (ev) => {
-    if (startX === null || startY === null) return;
-    if (Math.abs(ev.clientX - startX) > THRESHOLD || Math.abs(ev.clientY - startY) > THRESHOLD) {
-      moved = true;
-      suppressClick = true;
-    }
-  };
-
-  const onPointerUp = (ev) => {
-    if (startX === null || startY === null) return;
-    if (imgEl.releasePointerCapture) {
-      try { imgEl.releasePointerCapture(ev.pointerId); } catch (e) { }
-    }
-    if (!moved) {
-      onTap();
-      suppressClick = true;
-    }
-    clear();
-  };
-
-  const onPointerCancel = clear;
-
-  const onClick = (ev) => {
-    if (suppressClick) {
-      suppressClick = false;
-      return;
-    }
-    onTap();
-  };
-
-  imgEl.addEventListener('pointerdown', onPointerDown);
-  imgEl.addEventListener('pointermove', onPointerMove);
-  imgEl.addEventListener('pointerup', onPointerUp);
-  imgEl.addEventListener('pointercancel', onPointerCancel);
-  imgEl.addEventListener('click', onClick);
-}
-
 function getImageDetailPayload(source, folder = 'products'){
   const url = cloudinaryUrl(source, folder);
   const cloudinaryInfo = url ? parseCloudinaryUrl(url) : null;
@@ -306,12 +244,6 @@ function fileToDataUrl(file){
   });
 }
 
-// Redimensiona/comprime la imagen en el navegador antes de convertirla a
-// base64. Esto es clave: el backend usa express.json() con un límite de
-// tamaño de body (por defecto 100kb), y una foto de cámara sin comprimir
-// (varios MB) supera ese límite y provoca un error 500/413 al guardar.
-// Con esto, cada imagen queda en unos pocos cientos de KB como máximo y
-// se sube ya en formato WebP para ahorrar ancho de banda.
 function compressImage(file, maxDim = 1280, quality = 0.82){
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -872,7 +804,10 @@ function renderPacks(){
     tr.innerHTML = `
       <td data-label="Imagen">
         <div class="thumb-wrap">
-          ${imgUrl ? `<img class="thumb" src="${imgUrl}" alt="${escapeHtml(p.nombre)}">` : `<div class="thumb-placeholder">🎁</div>`}
+          <div class="thumb-img-box">
+            ${imgUrl ? `<img class="thumb" src="${imgUrl}" alt="${escapeHtml(p.nombre)}">` : `<div class="thumb-placeholder">🎁</div>`}
+            ${imgUrl ? `<button class="img-detail-btn" title="Ver detalle de imagen" data-pack-img-detail="${p.id}">🔍</button>` : ''}
+          </div>
           <div class="thumb-label">${imgUrl ? 'Cargando...' : 'Sin imagen'}</div>
         </div>
       </td>
@@ -894,12 +829,16 @@ function renderPacks(){
       const updateMeta = () => setImageMetaInfo(thumbImg, thumbLabel);
       thumbImg.addEventListener('load', updateMeta);
       thumbImg.addEventListener('error', () => { thumbLabel.textContent = 'Imagen no disponible'; });
-      thumbImg.style.cursor = 'pointer';
-      const openPackDetail = () => showImageDetail((p.imagenes || [])[0] || p.imagen, 'packs');
-      attachImageTapListener(thumbImg, openPackDetail);
       if (thumbImg.complete && thumbImg.naturalWidth) {
         updateMeta();
       }
+    }
+    const packDetailBtn = tr.querySelector('[data-pack-img-detail]');
+    if (packDetailBtn) {
+      packDetailBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showImageDetail((p.imagenes || [])[0] || p.imagen, 'packs');
+      });
     }
   });
 
@@ -1013,15 +952,6 @@ async function deletePack(id){
   }catch(e){ showToast('Error eliminando: ' + e.message, true); }
 }
 
-/* ================================================================
-   OFERTA -> DESCUENTO (nuevo)
-   En vez de escribir el porcentaje a mano, el usuario escribe el precio
-   final que quiere cobrar y acá se calcula solo el % que hay que guardar
-   (el backend/tienda sigue usando el campo "descuento" tal cual). Se usa
-   la misma lógica para producto y para pack, cambiando solo el prefijo de
-   ids ("prod" / "pack").
-   ================================================================ */
-
 function attachOfertaCalc(prefix){
   const oferta = document.getElementById(`${prefix}-oferta`);
   const box = document.getElementById(`${prefix}-oferta-box`);
@@ -1079,23 +1009,6 @@ function attachOfertaCalc(prefix){
 
 const recalcProdOferta = attachOfertaCalc('prod');
 const recalcPackOferta = attachOfertaCalc('pack');
-
-/* ================================================================
-   PEDIDOS  ->  /api/pedidos  (+ /api/pedidos/:id/asignar)
-              /api/pedidos-asignados
-
-   Antes "Pedidos nuevos" y "Pedidos guardados (seguimiento)" vivían en
-   dos vistas separadas, cada una haciendo su propio fetch por su lado.
-   Eso producía dos problemas:
-     1) el filtro de "quién ya es asignado" se calculaba en dos lugares
-        distintos (loadCounts y loadPedidosNuevos) y podía desincronizarse.
-     2) "reincidente" solo se calculaba dentro de Nuevos, así que un
-        cliente que volvía a comprar ya con su pedido en Guardados no se
-        marcaba como reincidente ahí.
-   Ahora todo vive en un solo panel "Pedidos" con dos pestañas (Nuevos /
-   Guardados) que comparten una sola carga de datos y un solo historial
-   para detectar clientes reincidentes en cualquiera de las dos pestañas.
-   ================================================================ */
 
 // Misma lógica que usa el backend (ordersBelongToSameUser) para decidir si
 // dos pedidos son del mismo cliente: mismo teléfono, mismo correo, o mismo id.
@@ -1158,9 +1071,6 @@ function normalizePedidoState(p){
   };
 }
 
-// Carga única para toda la sección "Pedidos": trae /api/pedidos y
-// /api/pedidos-asignados juntos, calcula qué pedidos nuevos ya fueron
-// asignados y deja ambas listas listas para las dos pestañas.
 async function loadPedidosSection(){
   try{
     const [nuevosData, asignadosData] = await Promise.all([
@@ -1168,10 +1078,6 @@ async function loadPedidosSection(){
       apiFetch('/api/pedidos-asignados').catch(() => ({ pedidosAsignados: [] }))
     ]);
     const asignados = asignadosData.pedidosAsignados || [];
-    // El registro asignado tiene su PROPIO id (push-id nuevo generado al
-    // asignar); el id del pedido original queda en "pedido_origen_id". Hay
-    // que excluir por ese campo, no por "id", o el pedido queda duplicado
-    // (sigue en Nuevos y también aparece en Guardados).
     const asignadosIds = new Set(asignados.map(p => p.pedido_origen_id || p.id));
     state.pedidosNuevos = (nuevosData.pedidos || []).filter(p => !asignadosIds.has(p.id));
     state.pedidosSeguimiento = asignados.map(p => normalizePedidoState({
@@ -1298,9 +1204,6 @@ async function deletePedidoNuevo(id){
 
 /* ------------------------------ Pedidos guardados ------------------------------- */
 
-// Los 4 estados son independientes (checkboxes). "pagado" y "pendiente_pago"
-// son mutuamente excluyentes: no tiene sentido que un pedido esté pagado
-// y pendiente de pago a la vez, así que marcar uno desmarca el otro.
 const ESTADO_FIELDS = [
   { key: 'aceptado',       short: 'Aceptado',    label: 'Aceptado' },
   { key: 'entregado',      short: 'Entregado',   label: 'Entregado' },
@@ -1308,8 +1211,6 @@ const ESTADO_FIELDS = [
   { key: 'pagado',         short: 'Pagado',      label: 'Pagado' },
 ];
 
-// Un pedido se considera "completado" cuando ya fue entregado y pagado.
-// Esa es la línea que separa la pestaña "En proceso" de "Completados".
 function estadoPedidoKey(p){
   if (toBoolean(p.entregado) && toBoolean(p.pagado)) return 'completado';
   if (toBoolean(p.pagado) && !toBoolean(p.entregado)) return 'pagado';
@@ -1331,8 +1232,6 @@ function isPedidoVisibleEnSeguimiento(p){
   return !isPedidoPagadoNoEntregado(p);
 }
 
-// Pestaña activa dentro de "Guardados". 'proceso' agrupa pendiente + en
-// proceso (todo lo que todavía no está completado y pagado).
 let segTabActual = 'proceso';
 
 function renderPedidosSeguimiento(){
@@ -1350,8 +1249,6 @@ function renderPedidosSeguimiento(){
   document.getElementById('seg-empty').hidden = list.length !== 0;
 
   list.forEach(p => {
-    // Reincidente calculado contra TODO el historial (nuevos + guardados),
-    // no solo contra el campo que pudiera venir del backend.
     const reincidente = esClienteReincidente(p, historial);
     const tr = document.createElement('tr');
     const marcador = MARCADOR[estadoPedidoKey(p)];
@@ -1447,8 +1344,6 @@ function actualizarBadgesPedidos(){
   setText('tab-count-seguimiento', enProceso);
   setText('seg-count-proceso', enProceso);
   setText('seg-count-completado', completados);
-  // Badge del sidebar: todo lo que todavía necesita atención (pedidos nuevos
-  // sin asignar + guardados en proceso no pagados).
   setText('badge-pedidos', nuevosCount + enProceso);
 }
 
@@ -1481,10 +1376,6 @@ function showPedidoDetalle(p){
   `;
   openModal('modal-pedido');
 }
-
-/* ================================================================
-   REGISTRO DE USUARIOS (ESTADÍSTICAS)  ->  /obtener-estadisticas
-   ================================================================ */
 
 async function loadUsuarios(){
   try{
@@ -1547,11 +1438,6 @@ function escapeHtml(str){
     goToView('config');
   }
 })();
-
-/* ================================================================
-   RESUMEN  ->  construido con los mismos endpoints que ya usa el panel
-   (/api/pedidos, /api/pedidos-asignados, /obtener-estadisticas).
-   ================================================================ */
 
 function esDelMesActual(fechaStr){
   if (!fechaStr) return false;
@@ -1625,11 +1511,6 @@ function parseDurationValue(val){
   return 0;
 }
 
-// El backend guarda la duración real de la sesión en
-// "duracion_sesion_segundos" (número de segundos) — ese es el campo que hoy
-// devuelve /obtener-estadisticas, así que es la fuente principal. El resto
-// de nombres de campo se mantienen solo como respaldo por si el registro
-// viene de una versión anterior del frontend de la tienda.
 function parseSessionDuration(u){
   if (u == null) return 0;
   if (typeof u === 'object' && u.duracion_sesion_segundos != null){
@@ -1641,9 +1522,6 @@ function parseSessionDuration(u){
   return parseDurationValue(candidato);
 }
 
-// Hora de entrada (0-23) de un registro de usuario, para saber a qué horas
-// del día suele conectarse la gente. Usa "fecha_hora_entrada"
-// (formato "yyyy-MM-dd HH:mm:ss", hora de Cuba) tal como lo guarda el backend.
 function horaDeEntrada(u){
   const f = u && (u.fecha_hora_entrada || u.fecha_hora || u.fecha);
   if (!f) return null;
@@ -1722,8 +1600,6 @@ function renderHorasConexionChart(usuarios){
     ${hayDatos ? `<div class="hour-grid">${cards}</div>` : `<div class="chart-empty">Todavía no hay registros suficientes para calcular horas pico.</div>`}`;
 }
 
-// Fechas límite (inclusive) de un rango, según el preset elegido o un rango
-// personalizado. Devuelve objetos Date normalizados a inicio/fin de día.
 function calcularRangoFechas(){
   const { preset, desde, hasta } = state.resumenRango;
   const hoy = new Date();
