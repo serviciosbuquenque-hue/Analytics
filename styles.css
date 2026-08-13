@@ -66,6 +66,11 @@ code{ font-family: var(--font-mono); background: var(--surface-3); padding: .1em
    Layout
    ============================================================ */
 .app{ display:flex; min-height:100vh; }
+/* Oculta TODO el panel (sidebar, vistas, datos) hasta que app.js confirme
+   una sesión válida y quite esta clase con unlockApp(). Al ser display:none
+   real (no un overlay encima), borrar el div del login en devtools no
+   revela nada: el contenido simplemente no está montado/visible. */
+.app.locked{ display:none; }
 
 .sidebar{
   width: var(--sidebar-w); flex-shrink:0;

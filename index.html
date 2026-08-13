@@ -13,11 +13,31 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Analytics">
-<link rel="stylesheet" href="styles.css?v=2">
+<link rel="stylesheet" href="styles.css?v=3">
 </head>
 <body>
 
-<!-- ===================== GATE DE LOGIN ===================== -->
+<!-- ===================== GATE 1: BACKEND ===================== -->
+<!-- Se muestra primero si todavía no hay URL de backend guardada. Hasta que
+     no se guarde una URL válida, no aparece ni el login ni el panel. -->
+<div id="backend-gate" class="auth-gate">
+  <div class="auth-card">
+    <div class="auth-header">
+      <span class="brand-mark" style="font-size:28px;">▣</span>
+      <h2>Configurar backend</h2>
+      <p>Antes de continuar, indica la URL de tu servidor</p>
+    </div>
+    <div id="backend-error" class="auth-error" style="display:none;"></div>
+    <label>URL del backend
+      <input type="text" id="backend-url-input" placeholder="https://tu-backend.onrender.com" autocomplete="off">
+    </label>
+    <button type="button" class="btn btn-primary" id="backend-save" style="width:100%;">Guardar y continuar</button>
+  </div>
+</div>
+
+<!-- ===================== GATE 2: LOGIN ===================== -->
+<!-- Solo aparece después de guardar el backend. El panel (.app) permanece
+     oculto por CSS (clase "locked") hasta que el login sea exitoso. -->
 <div id="auth-gate" class="auth-gate">
   <div class="auth-card">
     <div class="auth-header">
@@ -33,7 +53,6 @@
       <input type="password" id="auth-password" autocomplete="current-password">
     </label>
     <button type="button" class="btn btn-primary" id="auth-submit" style="width:100%;">Entrar</button>
-    <p class="hint" style="margin-top:12px;">¿No configuraste la URL del backend todavía? Ve a la pestaña "Conexión" primero.</p>
   </div>
 </div>
 
@@ -91,7 +110,9 @@
   }
 </style>
 
-<div class="app">
+<!-- La clase "locked" oculta TODO el panel (display:none) hasta que el
+     login sea válido. Se quita únicamente desde unlockApp() en app.js. -->
+<div class="app locked">
 
   <!-- Overlay para el drawer en móvil -->
   <div id="nav-overlay" class="nav-overlay"></div>
@@ -310,15 +331,12 @@
     <section class="view" id="view-config">
       <header class="view-header">
         <h2>Conexión al backend</h2>
-        <p>Configura la URL de tu servidor y tu Cloud Name de Cloudinary (solo para mostrar imágenes).</p>
+        <p>Cambia la URL de tu servidor si es necesario. Las imágenes usan el Cloud de Cloudinary fijo del negocio.</p>
       </header>
 
       <div class="form-card">
         <label>URL del backend
           <input type="text" id="cfg-api-url" placeholder="https://tu-backend.onrender.com">
-        </label>
-        <label>Cloudinary Cloud Name
-          <input type="text" id="cfg-cloud-name" placeholder="tu-cloud-name">
         </label>
         <div class="form-actions">
           <button class="btn btn-primary" id="cfg-save">Guardar y probar conexión</button>
@@ -724,6 +742,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=2"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>

@@ -3,9 +3,17 @@
    (Express + Firebase RTDB + Cloudinary) ya existentes.
    ========================================================================= */
 
+// Cloud de Cloudinary fijo del negocio: ya no se pide por interfaz, así se
+// evita que cualquiera que abra el panel pueda cambiarlo por error o a propósito.
+const CLOUDINARY_CLOUD_NAME = 'vgvdzqql';
+
+// Limpieza de una config vieja que ya no se usa (si algún navegador la tenía guardada).
+localStorage.removeItem('panel_cloud_name');
+
 const state = {
   apiUrl: localStorage.getItem('panel_api_url') || '',
-  cloudName: localStorage.getItem('panel_cloud_name') || 'vgvdzqql',
+  cloudName: CLOUDINARY_CLOUD_NAME,
+  authenticated: false, // se pone en true solo tras un login válido contra el backend
   productos: [],
   packs: [],
   pedidosNuevos: [],
@@ -55,7 +63,8 @@ async function apiFetch(path, options = {}){
     ...options
   });
   if (res.status === 401){
-    // La sesión no existe o expiró: mostrar el login y cortar aquí.
+    // La sesión no existe o expiró: ocultar la app y volver a pedir login.
+    lockApp();
     showAuthGate();
     throw new Error('Sesión no iniciada. Inicia sesión para continuar.');
   }
@@ -319,6 +328,12 @@ function compressImage(file, maxDim = 1280, quality = 0.82){
 /* ------------------------------ Navegación ------------------------------ */
 
 function goToView(view){
+  // Blindaje: aunque alguien oculte el overlay de login a mano con devtools,
+  // esta función sigue sin dejar cambiar de pestaña sin sesión válida.
+  if (!state.authenticated){
+    console.warn('Navegación bloqueada: no hay sesión iniciada.');
+    return;
+  }
   document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.view === view));
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   const target = document.getElementById('view-' + view);
@@ -370,15 +385,24 @@ async function testConnection(){
 
 document.getElementById('cfg-save').addEventListener('click', async () => {
   const url = document.getElementById('cfg-api-url').value.trim();
-  const cloud = document.getElementById('cfg-cloud-name').value.trim();
   state.apiUrl = url;
-  state.cloudName = cloud;
   localStorage.setItem('panel_api_url', url);
-  localStorage.setItem('panel_cloud_name', cloud);
 
   const result = document.getElementById('cfg-result');
   result.textContent = 'Probando conexión...';
   result.className = 'hint';
+
+  // Si se cambia el backend estando ya dentro del panel, la sesión de la
+  // URL anterior no sirve para la nueva: hay que volver a pedir login.
+  const authenticated = await checkAuth();
+  if (!authenticated){
+    result.textContent = 'Backend guardado. Inicia sesión de nuevo para continuar.';
+    result.className = 'hint err';
+    lockApp();
+    showAuthGate();
+    return;
+  }
+
   const ok = await testConnection();
   if (ok){
     result.textContent = '✓ Conectado correctamente al backend.';
@@ -396,7 +420,6 @@ document.getElementById('notif-load')?.addEventListener('click', loadNotificatio
 
 function initConfigFields(){
   document.getElementById('cfg-api-url').value = state.apiUrl;
-  document.getElementById('cfg-cloud-name').value = state.cloudName;
 }
 
 const NOTIF_ICON_LIST = [
@@ -1483,18 +1506,95 @@ async function checkAuth(){
   }
 }
 
+/* --- Bloqueo real del panel ------------------------------------------------
+   El panel completo (sidebar, vistas, datos) arranca con la clase "locked"
+   puesta directamente en el HTML, que lo pone en display:none. Esa clase
+   SOLO se quita desde unlockApp(), que solo se llama tras un login válido
+   contra el backend. Así, aunque alguien abra devtools y borre a mano el
+   overlay de login (o le cambie el CSS), no hay nada debajo que mostrar: el
+   contenedor .app sigue oculto y goToView() sigue rechazando la navegación
+   porque state.authenticated sigue en false.
+
+   Importante: esto es una barrera de interfaz, pensada para que no se pueda
+   "colar" con un truco de un clic en el navegador. La seguridad real de los
+   datos la sigue dando el backend (cookie de sesión + verificación en cada
+   endpoint) — eso no cambia y sigue siendo indispensable. */
+
+function lockApp(){
+  state.authenticated = false;
+  const appEl = document.querySelector('.app');
+  if (appEl) appEl.classList.add('locked');
+}
+
+function unlockApp(){
+  state.authenticated = true;
+  const appEl = document.querySelector('.app');
+  if (appEl) appEl.classList.remove('locked');
+}
+
+function showBackendGate(){
+  const gate = document.getElementById('backend-gate');
+  if (gate) gate.classList.add('open');
+}
+
+function hideBackendGate(){
+  const gate = document.getElementById('backend-gate');
+  if (gate) gate.classList.remove('open');
+}
+
 function showAuthGate(){
   const gate = document.getElementById('auth-gate');
   if (gate) gate.classList.add('open');
-  const appEl = document.querySelector('.app');
-  if (appEl) appEl.style.filter = 'blur(2px)';
 }
 
 function hideAuthGate(){
   const gate = document.getElementById('auth-gate');
   if (gate) gate.classList.remove('open');
-  const appEl = document.querySelector('.app');
-  if (appEl) appEl.style.filter = '';
+}
+
+async function doSaveBackend(){
+  const urlEl = document.getElementById('backend-url-input');
+  const errEl = document.getElementById('backend-error');
+  const btn = document.getElementById('backend-save');
+  const url = urlEl.value.trim();
+
+  if (!url){
+    errEl.textContent = 'Ingresa la URL de tu backend.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (!/^https?:\/\//i.test(url)){
+    errEl.textContent = 'La URL debe empezar con http:// o https://';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  errEl.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'Guardando...';
+
+  state.apiUrl = url.replace(/\/$/, '');
+  localStorage.setItem('panel_api_url', state.apiUrl);
+
+  btn.disabled = false;
+  btn.textContent = 'Guardar y continuar';
+
+  hideBackendGate();
+  await proceedPastBackendGate();
+}
+
+async function proceedPastBackendGate(){
+  initConfigFields();
+  // Puede que ya exista una sesión válida (cookie viva de una visita
+  // anterior); si no, se pide login. Si el backend no responde, también
+  // se pide login y el usuario verá el error de conexión al intentar entrar.
+  const authenticated = await checkAuth();
+  if (authenticated){
+    unlockApp();
+    await bootPanel();
+  } else {
+    showAuthGate();
+  }
 }
 
 async function doLogin(){
@@ -1506,8 +1606,10 @@ async function doLogin(){
   const password = passEl.value;
 
   if (!apiUrlOk()){
-    errEl.textContent = 'Configura primero la URL del backend.';
-    errEl.style.display = 'block';
+    // No debería poder llegar aquí sin backend configurado, pero por las
+    // dudas lo mandamos de vuelta al primer paso.
+    hideAuthGate();
+    showBackendGate();
     return;
   }
   if (!username || !password){
@@ -1532,6 +1634,7 @@ async function doLogin(){
     if (res.ok && data.success){
       passEl.value = '';
       hideAuthGate();
+      unlockApp();
       await bootPanel();
     } else {
       errEl.textContent = data.message || 'No se pudo iniciar sesión.';
@@ -1547,14 +1650,20 @@ async function doLogin(){
 }
 
 async function doLogout(){
-  if (!apiUrlOk()) return;
-  try {
-    const base = state.apiUrl.replace(/\/$/, '');
-    await fetch(base + '/api/auth/logout', { method: 'POST', credentials: 'include' });
-  } catch (e) { /* no pasa nada */ }
+  lockApp();
+  if (apiUrlOk()){
+    try {
+      const base = state.apiUrl.replace(/\/$/, '');
+      await fetch(base + '/api/auth/logout', { method: 'POST', credentials: 'include' });
+    } catch (e) { /* no pasa nada */ }
+  }
   showAuthGate();
 }
 
+document.getElementById('backend-save')?.addEventListener('click', doSaveBackend);
+document.getElementById('backend-url-input')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') doSaveBackend();
+});
 document.getElementById('auth-submit')?.addEventListener('click', doLogin);
 document.getElementById('auth-password')?.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') doLogin();
@@ -1583,19 +1692,20 @@ async function bootPanel(){
 }
 
 (async function init(){
+  // Arranque siempre bloqueado. El panel (.app) ya nace oculto por CSS
+  // (clase "locked" en el HTML) — esto es solo el respaldo en JS.
+  lockApp();
+
   if (!apiUrlOk()){
-    // Sin URL de backend configurada todavía no hay sesión que verificar.
-    initConfigFields();
-    goToView('config');
+    // Primer uso / navegador nuevo: todavía no hay backend guardado.
+    // Lo primero que se ve es el cartel para configurarlo, nada más.
+    showBackendGate();
     return;
   }
-  const authenticated = await checkAuth();
-  if (authenticated){
-    await bootPanel();
-  } else {
-    initConfigFields();
-    showAuthGate();
-  }
+
+  // Ya hay backend guardado de una visita anterior: saltamos directo
+  // a comprobar sesión / pedir login.
+  await proceedPastBackendGate();
 })();
 
 function esDelMesActual(fechaStr){
