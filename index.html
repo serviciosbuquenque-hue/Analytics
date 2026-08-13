@@ -53,6 +53,17 @@
       <input type="password" id="auth-password" autocomplete="current-password">
     </label>
     <button type="button" class="btn btn-primary" id="auth-submit" style="width:100%;">Entrar</button>
+
+    <button type="button" class="auth-link" id="auth-toggle-advanced">¿Problemas para iniciar sesión?</button>
+
+    <div id="auth-advanced-panel" style="display:none;">
+      <label>URL del backend
+        <input type="text" id="auth-api-url" placeholder="https://tu-backend.onrender.com" autocomplete="off">
+      </label>
+      <button type="button" class="btn btn-secondary" id="auth-save-url" style="width:100%;">Guardar URL</button>
+      <button type="button" class="btn btn-danger" id="auth-clear-storage" style="width:100%; margin-top:8px;">Borrar datos guardados del navegador</button>
+      <p class="hint" id="auth-advanced-result" style="margin-top:8px;"></p>
+    </div>
   </div>
 </div>
 
@@ -108,6 +119,27 @@
     font-size: 13px;
     margin-bottom: 14px;
   }
+  .auth-link {
+    display: block;
+    width: 100%;
+    background: none;
+    border: none;
+    color: #8891a8;
+    font-size: 12px;
+    text-decoration: underline;
+    text-align: center;
+    margin-top: 14px;
+    padding: 4px;
+    cursor: pointer;
+  }
+  .auth-link:hover { color: #b6bcce; }
+  #auth-advanced-panel { margin-top: 14px; padding-top: 14px; border-top: 1px solid #262c3d; }
+  .btn-secondary {
+    background: rgba(91,124,250,.12);
+    border: 1px solid rgba(91,124,250,.35);
+    color: #9fb2ff;
+  }
+  .btn-secondary:hover { background: rgba(91,124,250,.2); }
 </style>
 
 <!-- La clase "locked" oculta TODO el panel (display:none) hasta que el

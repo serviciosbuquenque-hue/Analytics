@@ -12,6 +12,7 @@ localStorage.removeItem('panel_cloud_name');
 
 const state = {
   apiUrl: localStorage.getItem('panel_api_url') || '',
+  authToken: localStorage.getItem('panel_auth_token') || '',
   cloudName: CLOUDINARY_CLOUD_NAME,
   authenticated: false, // se pone en true solo tras un login válido contra el backend
   productos: [],
@@ -30,6 +31,16 @@ const state = {
 
 function apiUrlOk(){
   return state.apiUrl && state.apiUrl.trim().length > 0;
+}
+
+function authHeaders(){
+  return state.authToken ? { 'Authorization': 'Bearer ' + state.authToken } : {};
+}
+
+function setAuthToken(token){
+  state.authToken = token || '';
+  if (token) localStorage.setItem('panel_auth_token', token);
+  else localStorage.removeItem('panel_auth_token');
 }
 
 /* Helpers "seguros" para tocar el DOM: si el elemento no existe (por ejemplo
@@ -55,15 +66,17 @@ async function apiFetch(path, options = {}){
   }
   const base = state.apiUrl.replace(/\/$/, '');
   const res = await fetch(base + path, {
-    headers: { 'Content-Type': 'application/json' },
-    // Imprescindible: sin esto el navegador NO envía la cookie de sesión
-    // en peticiones cross-origin (este panel vive en GitHub Pages, el
-    // backend en Render — son dominios distintos).
+    // Se manda igual por si el navegador sí soporta la cookie cross-site,
+    // pero la autenticación real va por el token Bearer de abajo: en
+    // iOS Safari (ITP) la cookie cross-site puede no viajar nunca, y sin
+    // el token la sesión "se cae" aunque el login haya sido correcto.
     credentials: 'include',
-    ...options
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...authHeaders(), ...(options.headers || {}) }
   });
   if (res.status === 401){
     // La sesión no existe o expiró: ocultar la app y volver a pedir login.
+    setAuthToken(null);
     lockApp();
     showAuthGate();
     throw new Error('Sesión no iniciada. Inicia sesión para continuar.');
@@ -1496,10 +1509,12 @@ function escapeHtml(str){
 
 async function checkAuth(){
   if (!apiUrlOk()) return false;
+  if (!state.authToken) return false; // sin token guardado no hay sesión válida (no confiamos solo en la cookie por iOS)
   try {
     const base = state.apiUrl.replace(/\/$/, '');
-    const res = await fetch(base + '/api/auth/me', { credentials: 'include' });
+    const res = await fetch(base + '/api/auth/me', { credentials: 'include', headers: authHeaders() });
     const data = await res.json();
+    if (!(data && data.authenticated)) setAuthToken(null);
     return !!(data && data.authenticated);
   } catch (e) {
     return false;
@@ -1632,6 +1647,7 @@ async function doLogin(){
     });
     const data = await res.json();
     if (res.ok && data.success){
+      setAuthToken(data.token || null);
       passEl.value = '';
       hideAuthGate();
       unlockApp();
@@ -1654,9 +1670,10 @@ async function doLogout(){
   if (apiUrlOk()){
     try {
       const base = state.apiUrl.replace(/\/$/, '');
-      await fetch(base + '/api/auth/logout', { method: 'POST', credentials: 'include' });
+      await fetch(base + '/api/auth/logout', { method: 'POST', credentials: 'include', headers: authHeaders() });
     } catch (e) { /* no pasa nada */ }
   }
+  setAuthToken(null);
   showAuthGate();
 }
 
@@ -1669,6 +1686,64 @@ document.getElementById('auth-password')?.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') doLogin();
 });
 document.getElementById('logout-btn')?.addEventListener('click', doLogout);
+
+/* --------- Login: panel avanzado (URL del backend + borrar datos) --------- */
+
+document.getElementById('auth-toggle-advanced')?.addEventListener('click', () => {
+  const panel = document.getElementById('auth-advanced-panel');
+  if (!panel) return;
+  const opening = panel.style.display === 'none';
+  panel.style.display = opening ? 'block' : 'none';
+  if (opening){
+    const urlEl = document.getElementById('auth-api-url');
+    if (urlEl) urlEl.value = state.apiUrl || '';
+  }
+});
+
+document.getElementById('auth-save-url')?.addEventListener('click', () => {
+  const urlEl = document.getElementById('auth-api-url');
+  const resultEl = document.getElementById('auth-advanced-result');
+  const url = urlEl.value.trim().replace(/\/$/, '');
+  if (!url || !/^https?:\/\//i.test(url)){
+    resultEl.textContent = 'Ingresa una URL válida (debe empezar con http:// o https://).';
+    resultEl.className = 'hint err';
+    return;
+  }
+  state.apiUrl = url;
+  localStorage.setItem('panel_api_url', url);
+  setAuthToken(null); // el backend puede ser otro: cualquier token viejo ya no sirve
+  resultEl.textContent = '✓ URL guardada. Intenta iniciar sesión de nuevo.';
+  resultEl.className = 'hint ok';
+});
+
+document.getElementById('auth-clear-storage')?.addEventListener('click', async () => {
+  const resultEl = document.getElementById('auth-advanced-result');
+  const confirmed = confirm('Esto va a borrar todos los datos guardados del panel en este navegador (sesión, URL del backend configurada, caché) y va a recargar la página. ¿Continuar?');
+  if (!confirmed) return;
+
+  try { localStorage.clear(); } catch (e) { /* no pasa nada */ }
+  try { sessionStorage.clear(); } catch (e) { /* no pasa nada */ }
+
+  try {
+    if ('caches' in window){
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+  } catch (e) { /* no pasa nada */ }
+
+  try {
+    if ('serviceWorker' in navigator){
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map(r => r.unregister()));
+    }
+  } catch (e) { /* no pasa nada */ }
+
+  if (resultEl){
+    resultEl.textContent = 'Datos borrados. Recargando...';
+    resultEl.className = 'hint ok';
+  }
+  setTimeout(() => { window.location.reload(); }, 600);
+});
 
 /* --------------------------------- Init ---------------------------------- */
 
