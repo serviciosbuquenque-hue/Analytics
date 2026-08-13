@@ -17,6 +17,80 @@
 </head>
 <body>
 
+<!-- ===================== GATE DE LOGIN ===================== -->
+<div id="auth-gate" class="auth-gate">
+  <div class="auth-card">
+    <div class="auth-header">
+      <span class="brand-mark" style="font-size:28px;">▣</span>
+      <h2>Panel de Gestión</h2>
+      <p>Inicia sesión para continuar</p>
+    </div>
+    <div id="auth-error" class="auth-error" style="display:none;"></div>
+    <label>Usuario
+      <input type="text" id="auth-username" autocomplete="username">
+    </label>
+    <label>Contraseña
+      <input type="password" id="auth-password" autocomplete="current-password">
+    </label>
+    <button type="button" class="btn btn-primary" id="auth-submit" style="width:100%;">Entrar</button>
+    <p class="hint" style="margin-top:12px;">¿No configuraste la URL del backend todavía? Ve a la pestaña "Conexión" primero.</p>
+  </div>
+</div>
+
+<style>
+  .auth-gate {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(10, 12, 18, 0.92);
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .auth-gate.open { display: flex; }
+  .auth-card {
+    width: 100%;
+    max-width: 340px;
+    background: #131722;
+    border: 1px solid #262c3d;
+    border-radius: 14px;
+    padding: 28px 24px;
+    color: #e7e9ee;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+  }
+  .auth-header { text-align: center; margin-bottom: 20px; }
+  .auth-header h2 { margin: 8px 0 4px; font-size: 18px; }
+  .auth-header p { margin: 0; font-size: 13px; color: #8891a8; }
+  .auth-card label {
+    display: block;
+    font-size: 13px;
+    margin-bottom: 12px;
+    color: #b6bcce;
+  }
+  .auth-card input {
+    width: 100%;
+    margin-top: 6px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid #2b3244;
+    background: #0c0f17;
+    color: #e7e9ee;
+    font-size: 14px;
+    box-sizing: border-box;
+  }
+  .auth-card input:focus { outline: none; border-color: #5b7cfa; }
+  .auth-error {
+    background: #2a1414;
+    border: 1px solid #5a2323;
+    color: #ff8a8a;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 13px;
+    margin-bottom: 14px;
+  }
+</style>
+
 <div class="app">
 
   <!-- Overlay para el drawer en móvil -->
@@ -61,6 +135,10 @@
     <div class="conn-status" id="connStatus">
       <span class="dot"></span> <span id="connStatusText">Sin verificar</span>
     </div>
+
+    <button type="button" id="logout-btn" class="nav-item" style="margin-top:8px; width:100%; text-align:left; border:none; cursor:pointer;">
+      <span class="nav-ico">🔒</span> Cerrar sesión
+    </button>
   </aside>
 
   <!-- Main -->

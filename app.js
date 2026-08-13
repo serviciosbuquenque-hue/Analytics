@@ -48,8 +48,17 @@ async function apiFetch(path, options = {}){
   const base = state.apiUrl.replace(/\/$/, '');
   const res = await fetch(base + path, {
     headers: { 'Content-Type': 'application/json' },
+    // Imprescindible: sin esto el navegador NO envía la cookie de sesión
+    // en peticiones cross-origin (este panel vive en GitHub Pages, el
+    // backend en Render — son dominios distintos).
+    credentials: 'include',
     ...options
   });
+  if (res.status === 401){
+    // La sesión no existe o expiró: mostrar el login y cortar aquí.
+    showAuthGate();
+    throw new Error('Sesión no iniciada. Inicia sesión para continuar.');
+  }
   let data = null;
   try { data = await res.json(); } catch (e) { /* respuesta sin cuerpo JSON */ }
   if (!res.ok){
@@ -1419,9 +1428,105 @@ function escapeHtml(str){
     .replace(/"/g, '&quot;');
 }
 
+/* ------------------------------- Autenticación -------------------------------- */
+// Este panel corre en un dominio distinto al backend (GitHub Pages vs.
+// Render), así que necesita iniciar sesión igual que el panel de
+// administración: la sesión viaja como cookie cross-site (requiere
+// `credentials: 'include'` en cada fetch, ya aplicado en apiFetch).
+
+async function checkAuth(){
+  if (!apiUrlOk()) return false;
+  try {
+    const base = state.apiUrl.replace(/\/$/, '');
+    const res = await fetch(base + '/api/auth/me', { credentials: 'include' });
+    const data = await res.json();
+    return !!(data && data.authenticated);
+  } catch (e) {
+    return false;
+  }
+}
+
+function showAuthGate(){
+  const gate = document.getElementById('auth-gate');
+  if (gate) gate.classList.add('open');
+  const appEl = document.querySelector('.app');
+  if (appEl) appEl.style.filter = 'blur(2px)';
+}
+
+function hideAuthGate(){
+  const gate = document.getElementById('auth-gate');
+  if (gate) gate.classList.remove('open');
+  const appEl = document.querySelector('.app');
+  if (appEl) appEl.style.filter = '';
+}
+
+async function doLogin(){
+  const userEl = document.getElementById('auth-username');
+  const passEl = document.getElementById('auth-password');
+  const errEl = document.getElementById('auth-error');
+  const btn = document.getElementById('auth-submit');
+  const username = userEl.value.trim();
+  const password = passEl.value;
+
+  if (!apiUrlOk()){
+    errEl.textContent = 'Configura primero la URL del backend.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (!username || !password){
+    errEl.textContent = 'Usuario y contraseña son obligatorios.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  errEl.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'Entrando...';
+
+  try {
+    const base = state.apiUrl.replace(/\/$/, '');
+    const res = await fetch(base + '/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ username, password })
+    });
+    const data = await res.json();
+    if (res.ok && data.success){
+      passEl.value = '';
+      hideAuthGate();
+      await bootPanel();
+    } else {
+      errEl.textContent = data.message || 'No se pudo iniciar sesión.';
+      errEl.style.display = 'block';
+    }
+  } catch (e) {
+    errEl.textContent = 'Error de conexión con el backend.';
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Entrar';
+  }
+}
+
+async function doLogout(){
+  if (!apiUrlOk()) return;
+  try {
+    const base = state.apiUrl.replace(/\/$/, '');
+    await fetch(base + '/api/auth/logout', { method: 'POST', credentials: 'include' });
+  } catch (e) { /* no pasa nada */ }
+  showAuthGate();
+}
+
+document.getElementById('auth-submit')?.addEventListener('click', doLogin);
+document.getElementById('auth-password')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') doLogin();
+});
+document.getElementById('logout-btn')?.addEventListener('click', doLogout);
+
 /* --------------------------------- Init ---------------------------------- */
 
-(async function init(){
+async function bootPanel(){
   initConfigFields();
   if (apiUrlOk()){
     const ok = await testConnection();
@@ -1430,12 +1535,29 @@ function escapeHtml(str){
       loadProductos();
       loadPedidosSection();
       loadNotificationBanner();
+      loadResumen();
     } else {
       renderNotificationIconPicker();
       goToView('config');
     }
   } else {
     goToView('config');
+  }
+}
+
+(async function init(){
+  if (!apiUrlOk()){
+    // Sin URL de backend configurada todavía no hay sesión que verificar.
+    initConfigFields();
+    goToView('config');
+    return;
+  }
+  const authenticated = await checkAuth();
+  if (authenticated){
+    await bootPanel();
+  } else {
+    initConfigFields();
+    showAuthGate();
   }
 })();
 
@@ -1861,7 +1983,9 @@ document.querySelectorAll('[data-goto-inv]').forEach(card => {
 
 const resumenBtn = document.querySelector('.nav-item[data-view="resumen"]');
 if (resumenBtn) resumenBtn.addEventListener('click', loadResumen);
-if (apiUrlOk()) loadResumen();
+// (Se quitó la llamada automática a loadResumen() de aquí: ahora la
+// dispara bootPanel() una vez confirmada la sesión, para no llamar a la
+// API antes de tiempo y disparar un 401 innecesario.)
 
 /* ---------------------- Menú lateral en móvil ---------------------- */
 
