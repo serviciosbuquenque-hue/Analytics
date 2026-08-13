@@ -227,8 +227,45 @@ async function showImageDetail(source, folder = 'products'){
 
 function installServiceWorker(){
   if (!('serviceWorker' in navigator)) return;
+
+  // Evita que se recargue en bucle si hay varias pestañas abiertas.
+  let hasReloaded = false;
+
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hasReloaded) return;
+    hasReloaded = true;
+    window.location.reload();
+  });
+
   navigator.serviceWorker.register('./sw.js')
-    .then(() => console.log('Service worker registrado.'))
+    .then(registration => {
+      console.log('Service worker registrado.');
+
+      // Si ya hay un SW esperando (detectado en una carga anterior), actívalo ya.
+      if (registration.waiting) {
+        registration.waiting.postMessage('SKIP_WAITING');
+      }
+
+      // Cuando se detecta una versión nueva del SW, actívala apenas termine
+      // de instalarse en vez de esperar a que se cierren todas las pestañas.
+      registration.addEventListener('updatefound', () => {
+        const newWorker = registration.installing;
+        if (!newWorker) return;
+        newWorker.addEventListener('statechange', () => {
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            newWorker.postMessage('SKIP_WAITING');
+          }
+        });
+      });
+
+      // Revisa si hay una versión nueva del SW cada vez que la pestaña
+      // vuelve a estar visible (además del chequeo automático del navegador).
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          registration.update();
+        }
+      });
+    })
     .catch(() => console.warn('No se pudo registrar el service worker.'));
 }
 
