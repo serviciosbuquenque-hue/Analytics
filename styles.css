@@ -62,6 +62,31 @@ button, input, select, textarea{ font-family: inherit; }
 code{ font-family: var(--font-mono); background: var(--surface-3); padding: .1em .4em; border-radius: 4px; font-size: .9em; }
 :focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
 
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(158, 175, 203, 0.72) rgba(19, 22, 31, 0.5);
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(168, 180, 205, 0.82), rgba(117, 130, 156, 0.82));
+  border: 2px solid rgba(18, 21, 29, 0.8);
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(191, 203, 223, 0.9), rgba(133, 147, 177, 0.9));
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* ============================================================
    Layout
    ============================================================ */
@@ -470,7 +495,7 @@ code{ font-family: var(--font-mono); background: var(--surface-3); padding: .1em
 
 .icon-picker{
   display:grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
   gap: 12px;
   margin-bottom: 18px;
 }
@@ -487,7 +512,7 @@ code{ font-family: var(--font-mono); background: var(--surface-3); padding: .1em
   color: var(--text);
   text-align: center;
   cursor: pointer;
-  min-height: 110px;
+  min-height: 60px;
   transition: background .15s ease, border-color .15s ease, color .15s ease, transform .12s ease, box-shadow .15s ease;
 }
 .icon-select:hover{
@@ -505,11 +530,7 @@ code{ font-family: var(--font-mono); background: var(--surface-3); padding: .1em
   color: var(--accent);
 }
 .icon-select span{
-  display: block;
-  font-size: 13px;
-  color: var(--text);
-  white-space: normal;
-  line-height: 1.4;
+  display: none;
 }
 .icon-select.active{
   background: rgba(245,166,35,.18);
@@ -519,8 +540,51 @@ code{ font-family: var(--font-mono); background: var(--surface-3); padding: .1em
 .icon-select.active i{
   color: var(--accent);
 }
-.icon-select.active span{
+.usr-panel{
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.usr-summary-grid{
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  gap: 12px;
+}
+.usr-stat-card{
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: var(--shadow-s);
+}
+.usr-stat-card span{
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.usr-stat-card strong{
+  font-size: 24px;
+  font-family: var(--font-mono);
+  line-height: 1.1;
   color: var(--text);
+}
+.usr-summary{
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+  padding: 0 2px;
+}
+.usr-actions{
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+.usr-actions .btn{
+  min-width: 120px;
 }
 .search::placeholder{ color: var(--text-faint); }
 .search:focus{ outline:2px solid var(--accent); outline-offset:1px; }
@@ -812,18 +876,50 @@ tbody tr:hover td{ background: var(--surface-2); }
 .modal-backdrop{
   display:none; position:fixed; inset:0; background: rgba(4,5,9,.65); z-index: 100;
   align-items:flex-start; justify-content:center; padding: 40px 16px; overflow-y:auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(158, 175, 203, 0.72) rgba(19, 22, 31, 0.5);
+  -webkit-overflow-scrolling: touch;
+}
+.modal-backdrop::-webkit-scrollbar {
+  width: 10px;
+}
+.modal-backdrop::-webkit-scrollbar-track {
+  background: rgba(255,255,255,0.04);
+  border-radius: 999px;
+}
+.modal-backdrop::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(168, 180, 205, 0.8), rgba(117, 130, 156, 0.8));
+  border: 2px solid rgba(18, 21, 29, 0.8);
+  border-radius: 999px;
 }
 .modal-backdrop.open{ display:flex; }
 .modal{
   background: var(--surface); border:1px solid var(--border); border-radius: var(--radius-l);
-  width:100%; max-width: 600px; max-height: calc(100vh - 80px); display:flex; flex-direction:column;
+  width:100%; max-width: 650px; max-height: calc(100vh - 80px); display:flex; flex-direction:column;
   box-shadow: var(--shadow-l);
 }
 .modal-header{ display:flex; align-items:center; justify-content:space-between; padding: 18px 20px; border-bottom:1px solid var(--border); gap:12px; }
 .modal-header h3{ margin:0; font-size:17px; }
 .modal-close{ background:none; border:none; color: var(--text-faint); font-size:16px; cursor:pointer; flex-shrink:0; width:28px; height:28px; display:flex; align-items:center; justify-content:center; }
 .modal-close:hover{ color: var(--text); }
-.modal-body{ padding: 20px; overflow-y:auto; display:flex; flex-direction:column; gap:20px; }
+.modal-body{
+  padding: 20px; overflow-y:auto; display:flex; flex-direction:column; gap:20px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(158, 175, 203, 0.72) rgba(19, 22, 31, 0.5);
+  -webkit-overflow-scrolling: touch;
+}
+.modal-body::-webkit-scrollbar {
+  width: 10px;
+}
+.modal-body::-webkit-scrollbar-track {
+  background: rgba(255,255,255,0.04);
+  border-radius: 999px;
+}
+.modal-body::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(168, 180, 205, 0.8), rgba(117, 130, 156, 0.8));
+  border: 2px solid rgba(18, 21, 29, 0.8);
+  border-radius: 999px;
+}
 /* flex-wrap evita que "Eliminar producto" + "Cancelar" + "Guardar" (3
    botones con texto largo) se salgan del modal en pantallas angostas; en
    mobile además los apilamos en columna (ver media query). */

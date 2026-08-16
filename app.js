@@ -20,6 +20,9 @@ const state = {
   pedidosNuevos: [],
   pedidosSeguimiento: [],
   usuarios: [],
+  usuariosPage: 1,
+  usuariosPageSize: 50,
+  usuariosQuery: '',
   prodImages: [],   // imágenes en edición del modal de producto (public_id o dataURL)
   packImages: [],   // imágenes en edición del modal de pack
   invTab: 'todos',  // pestaña activa en Inventario: todos | bajo | sin
@@ -312,7 +315,7 @@ function fileToDataUrl(file){
   });
 }
 
-function compressImage(file, maxDim = 1280, quality = 0.82){
+function compressImage(file, maxDim = 1000, quality = 0.72){
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -443,7 +446,19 @@ const NOTIF_ICON_LIST = [
   { value: 'fas fa-star', preview: 'fa-solid fa-star' },
   { value: 'fas fa-percent', preview: 'fa-solid fa-percent' },
   { value: 'fas fa-shipping-fast', preview: 'fa-solid fa-shipping-fast' },
-  { value: 'fas fa-gift', preview: 'fa-solid fa-gift' }
+  { value: 'fas fa-gift', preview: 'fa-solid fa-gift' },
+  { value: 'fas fa-bolt', preview: 'fa-solid fa-bolt' },
+  { value: 'fas fa-tags', preview: 'fa-solid fa-tags' },
+  { value: 'fas fa-heart', preview: 'fa-solid fa-heart' },
+  { value: 'fas fa-thumbs-up', preview: 'fa-solid fa-thumbs-up' },
+  { value: 'fas fa-envelope', preview: 'fa-solid fa-envelope' },
+  { value: 'fas fa-location-dot', preview: 'fa-solid fa-location-dot' },
+  { value: 'fas fa-clock', preview: 'fa-solid fa-clock' },
+  { value: 'fas fa-cart-shopping', preview: 'fa-solid fa-cart-shopping' },
+  { value: 'fas fa-fire', preview: 'fa-solid fa-fire' },
+  { value: 'fas fa-rocket', preview: 'fa-solid fa-rocket' },
+  { value: 'fas fa-crown', preview: 'fa-solid fa-crown' },
+  { value: 'fas fa-megaphone', preview: 'fa-solid fa-megaphone' }
 ];
 
 function setNotificationForm(banner){
@@ -456,13 +471,39 @@ function setNotificationForm(banner){
   highlightNotificationIcon(iconField.value);
 }
 
+function normalizeIconClass(icon){
+  const raw = String(icon || '').trim();
+  if (!raw) return 'fa-solid fa-bell';
+
+  const normalized = raw
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (/^fa[srlbdk]-/i.test(normalized)) {
+    const parts = normalized.split(' ');
+    if (parts.length === 1) {
+      if (/^fa[srlbdk]-/i.test(parts[0])) return `${parts[0].startsWith('fa-') ? 'fa-solid' : 'fa-solid'} ${parts[0]}`;
+      return `fa-solid ${parts[0]}`;
+    }
+    const first = parts[0].toLowerCase();
+    const second = parts[1];
+    if (first === 'fas' || first === 'fa-solid') return `fa-solid ${second}`;
+    if (first === 'far' || first === 'fa-regular') return `fa-regular ${second}`;
+    if (first === 'fab' || first === 'fa-brands') return `fa-brands ${second}`;
+    if (first === 'fal' || first === 'fa-light') return `fa-light ${second}`;
+    return `fa-solid ${normalized}`;
+  }
+
+  if (normalized.startsWith('fa-')) return `fa-solid ${normalized}`;
+  return `fa-solid ${normalized}`;
+}
+
 function renderNotificationIconPicker(){
   const picker = document.getElementById('notif-iconpicker');
   if (!picker) return;
   picker.innerHTML = NOTIF_ICON_LIST.map(icon => `
-    <button type="button" class="icon-select" data-icon="${icon.value}">
+    <button type="button" class="icon-select" data-icon="${icon.value}" title="${icon.value}" aria-label="${icon.value}">
       <i class="${icon.preview}"></i>
-      <span>${icon.value}</span>
     </button>
   `).join('');
   picker.querySelectorAll('button').forEach(btn => {
@@ -479,11 +520,7 @@ function renderNotificationIconPicker(){
 }
 
 function previewIconClass(icon){
-  return String(icon || '')
-    .replace(/\bfas\b/g, 'fa-solid')
-    .replace(/\bfar\b/g, 'fa-regular')
-    .replace(/\bfab\b/g, 'fa-brands')
-    .replace(/\bfal\b/g, 'fa-light');
+  return normalizeIconClass(icon);
 }
 
 function highlightNotificationIcon(selected){
@@ -1628,18 +1665,57 @@ async function guardarEdicionComprasPedido(){
 async function loadUsuarios(){
   try{
     const data = await apiFetch('/obtener-estadisticas');
-    state.usuarios = Array.isArray(data) ? data : [];
+    const usuarios = Array.isArray(data) ? data : [];
+    state.usuarios = usuarios
+      .filter(u => u && typeof u === 'object')
+      .sort((a, b) => {
+        const da = new Date(a.fecha_hora_entrada || 0).getTime();
+        const db = new Date(b.fecha_hora_entrada || 0).getTime();
+        return db - da;
+      });
+    state.usuariosPage = 1;
     renderUsuarios();
   }catch(e){ showToast('Error cargando estadísticas: ' + e.message, true); }
 }
 
+function getFilteredUsuarios(){
+  const query = (state.usuariosQuery || '').trim().toLowerCase();
+  const source = state.usuarios || [];
+  if (!query) return source;
+
+  return source.filter(u => {
+    const haystack = [
+      u.fecha_hora_entrada,
+      u.ip,
+      u.pais,
+      u.tipo_usuario,
+      u.origen,
+      u.fuente_trafico,
+      u.navegador,
+      u.sistema_operativo
+    ].filter(Boolean).join(' ').toLowerCase();
+    return haystack.includes(query);
+  });
+}
+
 function renderUsuarios(){
   const tbody = document.getElementById('usr-tbody');
-  tbody.innerHTML = '';
-  document.getElementById('usr-empty').hidden = state.usuarios.length !== 0;
+  const empty = document.getElementById('usr-empty');
+  const summary = document.getElementById('usr-summary');
+  const loadMoreBtn = document.getElementById('usr-load-more');
+  const totalEl = document.getElementById('usr-total-count');
+  const recurrentEl = document.getElementById('usr-recurrent-count');
+  const uniqueEl = document.getElementById('usr-unique-count');
 
-  // Mostrar los más recientes primero
-  const list = [...state.usuarios].reverse();
+  if (!tbody) return;
+
+  const filtered = getFilteredUsuarios();
+  const total = filtered.length;
+  const visibleCount = Math.min(state.usuariosPage * state.usuariosPageSize, total);
+  const list = filtered.slice(0, visibleCount);
+
+  tbody.innerHTML = '';
+
   list.forEach(u => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -1652,9 +1728,37 @@ function renderUsuarios(){
       <td>${escapeHtml(u.sistema_operativo || '—')}</td>`;
     tbody.appendChild(tr);
   });
+
+  const recurrentes = filtered.filter(u => String(u.tipo_usuario || '').toLowerCase() === 'recurrente').length;
+  const unicos = filtered.filter(u => String(u.tipo_usuario || '').toLowerCase() !== 'recurrente').length;
+
+  if (summary) summary.textContent = total ? `Mostrando ${list.length} de ${total} registros.` : 'Sin resultados para esta búsqueda.';
+  if (totalEl) totalEl.textContent = String(total);
+  if (recurrentEl) recurrentEl.textContent = String(recurrentes);
+  if (uniqueEl) uniqueEl.textContent = String(unicos);
+  if (empty) empty.hidden = list.length !== 0 || total !== 0;
+
+  if (loadMoreBtn) {
+    const hasMore = visibleCount < total;
+    loadMoreBtn.hidden = !hasMore;
+    loadMoreBtn.disabled = !hasMore;
+    loadMoreBtn.textContent = hasMore ? 'Cargar más' : 'No hay más registros';
+  }
 }
 
 document.getElementById('usr-refresh').addEventListener('click', loadUsuarios);
+document.getElementById('usr-load-more')?.addEventListener('click', () => {
+  const filtered = getFilteredUsuarios();
+  if (state.usuariosPage * state.usuariosPageSize < filtered.length) {
+    state.usuariosPage += 1;
+    renderUsuarios();
+  }
+});
+document.getElementById('usr-search')?.addEventListener('input', (event) => {
+  state.usuariosQuery = event.target.value;
+  state.usuariosPage = 1;
+  renderUsuarios();
+});
 
 /* --------------------------------- Utils --------------------------------- */
 

@@ -6,7 +6,7 @@
 <title>Panel de Gestión</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-pPcjE2LjuMjPVq00N58WilL0mNB0gU+3i5Q+I3BjOXDyPnDCTpDpYt3w5kRKgaV/c+3efClx8ryzhkXvYl5FQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon.svg">
 <meta name="theme-color" content="#0b0e14">
@@ -541,19 +541,40 @@
         <h2>Registro de usuarios</h2>
         <p>Visitas y estadísticas registradas de quienes navegan la tienda.</p>
         <div class="header-actions">
+          <input type="search" id="usr-search" class="search" placeholder="Buscar usuario, IP, país, navegador...">
           <button class="btn btn-ghost" id="usr-refresh">↻ Actualizar</button>
         </div>
       </header>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Fecha/Hora</th><th>IP</th><th>País</th><th>Tipo</th><th>Origen</th><th>Navegador</th><th>SO</th>
-            </tr>
-          </thead>
-          <tbody id="usr-tbody"></tbody>
-        </table>
-        <p class="empty" id="usr-empty" hidden>No hay registros todavía.</p>
+      <div class="usr-panel">
+        <div class="usr-summary-grid">
+          <div class="usr-stat-card">
+            <span>Total</span>
+            <strong id="usr-total-count">0</strong>
+          </div>
+          <div class="usr-stat-card">
+            <span>Recurr.</span>
+            <strong id="usr-recurrent-count">0</strong>
+          </div>
+          <div class="usr-stat-card">
+            <span>Únicos</span>
+            <strong id="usr-unique-count">0</strong>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <div class="usr-summary" id="usr-summary">Mostrando 0 registros.</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha/Hora</th><th>IP</th><th>País</th><th>Tipo</th><th>Origen</th><th>Navegador</th><th>SO</th>
+              </tr>
+            </thead>
+            <tbody id="usr-tbody"></tbody>
+          </table>
+          <p class="empty" id="usr-empty" hidden>No hay registros todavía.</p>
+          <div class="usr-actions">
+            <button class="btn btn-ghost" id="usr-load-more" type="button">Cargar más</button>
+          </div>
+        </div>
       </div>
     </section>
 
