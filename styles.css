@@ -900,8 +900,16 @@ textarea{ resize: vertical; }
 .detail-grid dt{ color: var(--text-faint); }
 .detail-grid dd{ margin:0; }
 .compras-list{ margin-top:8px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
-.compras-list table{ font-size:12.5px; }
+.compras-list table{ font-size:12.5px; width:100%; }
 .compras-list strong{ font-size: 12.5px; color: var(--text-muted); text-transform:uppercase; letter-spacing:.04em; }
+.compras-list-header{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; flex-wrap:wrap; }
+.compras-list-edit select,
+.compras-list-edit input{
+  width:100%; min-width:110px; background: var(--surface-2); border:1px solid var(--border);
+  border-radius: var(--radius-s); color: var(--text); font-size:12.5px; padding:6px 8px;
+}
+.compras-edit-total{ margin-top:10px; text-align:right; font-size:13.5px; }
+.compras-edit-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:12px; flex-wrap:wrap; }
 
 .form-card{ background: var(--surface); border:1px solid var(--border); border-radius: var(--radius-m); padding:22px; display:flex; flex-direction:column; gap:14px; max-width:480px; box-shadow: var(--shadow-s); }
 /* Antes no tenía gap ni flex-wrap: con 2 botones de texto largo (p.ej.

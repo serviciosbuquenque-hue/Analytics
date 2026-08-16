@@ -1431,11 +1431,43 @@ function actualizarBadgesPedidos(){
 
 /* -------------------------- Detalle de pedido -------------------------- */
 
+// Referencia al pedido abierto actualmente en el modal y estado de edición
+// de su listado de productos (compras). Se resetean cada vez que se abre
+// el modal desde showPedidoDetalle.
+let pedidoDetalleActual = null;
+let pedidoDetalleEditando = false;
+let pedidoDetalleComprasEdit = [];
+
+function pedidoDetalleEsSeguimiento(p){
+  return !!(p && p.fecha_asignacion);
+}
+
+function endpointPedidoDetalle(){
+  const id = pedidoDetalleActual && pedidoDetalleActual.id;
+  return pedidoDetalleEsSeguimiento(pedidoDetalleActual) ? `/api/pedidos-asignados/${id}` : `/api/pedidos/${id}`;
+}
+
 function showPedidoDetalle(p){
   if (!p) return;
+  pedidoDetalleActual = p;
+  pedidoDetalleEditando = false;
+  pedidoDetalleComprasEdit = [];
+  renderPedidoDetalleBody();
+  openModal('modal-pedido');
+}
+
+function totalComprasEdit(){
+  return pedidoDetalleComprasEdit.reduce((acc, c) => acc + (Number(c.unitPrice) || 0) * (Number(c.quantity) || 0), 0);
+}
+
+function renderPedidoDetalleBody(){
   const body = document.getElementById('pedido-detalle-body');
+  const p = pedidoDetalleActual;
+  if (!p || !body) return;
+
   const compras = Array.isArray(p.compras) ? p.compras : [];
-  body.innerHTML = `
+
+  const cabecera = `
     <dl class="detail-grid">
       <dt>Número de orden</dt><dd>${escapeHtml(getPedidoNumero(p) || '—')}</dd>
       <dt>Comprador</dt><dd>${escapeHtml(p.nombre_comprador || '—')}</dd>
@@ -1443,20 +1475,154 @@ function showPedidoDetalle(p){
       <dt>Correo</dt><dd>${escapeHtml(p.correo_comprador || '—')}</dd>
       <dt>Dirección</dt><dd>${escapeHtml(p.direccion_envio || '—')}</dd>
       <dt>Entrega a</dt><dd>${escapeHtml(p.nombre_persona_entrega || '—')} (${escapeHtml(p.telefono_persona_entrega || '—')})</dd>
-      <dt>Total</dt><dd>$${Number(p.precio_compra_total || 0).toFixed(2)}</dd>
+      <dt>Total</dt><dd id="pedido-detalle-total">$${Number(p.precio_compra_total || 0).toFixed(2)}</dd>
     </dl>
-    ${compras.length ? `
-      <div class="compras-list">
-        <strong>Productos comprados</strong>
-        <table>
-          <thead><tr><th>Producto</th><th>Cant.</th><th>Precio</th></tr></thead>
-          <tbody>
-            ${compras.map(c => `<tr><td>${escapeHtml(c.name || c.nombre || '—')}</td><td>${c.quantity ?? c.cantidad ?? 1}</td><td>$${Number(c.unitPrice ?? c.precio ?? 0).toFixed(2)}</td></tr>`).join('')}
-          </tbody>
-        </table>
-      </div>` : ''}
   `;
-  openModal('modal-pedido');
+
+  if (!pedidoDetalleEditando){
+    body.innerHTML = `
+      ${cabecera}
+      <div class="compras-list">
+        <div class="compras-list-header">
+          <strong>Productos comprados</strong>
+          <button class="btn btn-ghost btn-small" id="pedido-editar-compras-btn">Editar productos</button>
+        </div>
+        ${compras.length ? `
+          <table>
+            <thead><tr><th>Producto</th><th>Cant.</th><th>Precio</th></tr></thead>
+            <tbody>
+              ${compras.map(c => `<tr><td>${escapeHtml(c.name || c.nombre || '—')}</td><td>${c.quantity ?? c.cantidad ?? 1}</td><td>$${Number(c.unitPrice ?? c.precio ?? 0).toFixed(2)}</td></tr>`).join('')}
+            </tbody>
+          </table>` : `<p class="hint">Este pedido no tiene productos registrados.</p>`}
+      </div>
+    `;
+    const editBtn = document.getElementById('pedido-editar-compras-btn');
+    if (editBtn) editBtn.addEventListener('click', iniciarEdicionComprasPedido);
+    return;
+  }
+
+  const totalEdit = totalComprasEdit();
+  body.innerHTML = `
+    ${cabecera}
+    <div class="compras-list compras-list-edit">
+      <div class="compras-list-header">
+        <strong>Editar productos</strong>
+        <button class="btn btn-ghost btn-small" id="pedido-agregar-producto-btn" ${state.productos.length ? '' : 'disabled'}>+ Agregar producto</button>
+      </div>
+      ${!state.productos.length ? `<p class="hint err">No se pudo cargar el inventario para editar productos.</p>` : ''}
+      <table>
+        <thead><tr><th>Producto</th><th>Cant.</th><th>Precio unit.</th><th>Subtotal</th><th></th></tr></thead>
+        <tbody>
+          ${pedidoDetalleComprasEdit.map((c, idx) => `
+            <tr data-row="${idx}">
+              <td>
+                <select class="pedido-edit-select" data-idx="${idx}">
+                  ${state.productos.map(prod => `<option value="${escapeHtml(String(prod.id))}" ${String(prod.id) === String(c.id) ? 'selected' : ''}>${escapeHtml(prod.nombre)}</option>`).join('')}
+                </select>
+              </td>
+              <td><input type="number" min="1" step="1" class="pedido-edit-qty" data-idx="${idx}" value="${Number(c.quantity) || 1}"></td>
+              <td><input type="number" min="0" step="0.01" class="pedido-edit-price" data-idx="${idx}" value="${Number(c.unitPrice) || 0}"></td>
+              <td>$${((Number(c.unitPrice) || 0) * (Number(c.quantity) || 0)).toFixed(2)}</td>
+              <td><button class="icon-btn" title="Quitar producto" data-remove-row="${idx}">🗑</button></td>
+            </tr>
+          `).join('') || `<tr><td colspan="5" class="hint">Sin productos. Usa "Agregar producto" para añadir uno.</td></tr>`}
+        </tbody>
+      </table>
+      <div class="compras-edit-total">Total: <strong>$${totalEdit.toFixed(2)}</strong></div>
+      <div class="compras-edit-actions">
+        <button class="btn btn-ghost btn-small" id="pedido-cancelar-edicion-btn">Cancelar</button>
+        <button class="btn btn-primary btn-small" id="pedido-guardar-edicion-btn">Guardar cambios</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('pedido-agregar-producto-btn')?.addEventListener('click', agregarProductoAEdicionPedido);
+  document.getElementById('pedido-cancelar-edicion-btn')?.addEventListener('click', () => {
+    pedidoDetalleEditando = false;
+    renderPedidoDetalleBody();
+  });
+  document.getElementById('pedido-guardar-edicion-btn')?.addEventListener('click', guardarEdicionComprasPedido);
+
+  body.querySelectorAll('.pedido-edit-select').forEach(sel => sel.addEventListener('change', (e) => {
+    const idx = Number(e.target.dataset.idx);
+    const prod = state.productos.find(x => String(x.id) === String(e.target.value));
+    if (!prod) return;
+    pedidoDetalleComprasEdit[idx] = {
+      ...pedidoDetalleComprasEdit[idx],
+      id: prod.id,
+      name: prod.nombre,
+      unitPrice: Number(prod.precio) || 0
+    };
+    renderPedidoDetalleBody();
+  }));
+  body.querySelectorAll('.pedido-edit-qty').forEach(inp => inp.addEventListener('input', (e) => {
+    const idx = Number(e.target.dataset.idx);
+    pedidoDetalleComprasEdit[idx].quantity = Math.max(1, Math.floor(Number(e.target.value) || 1));
+    renderPedidoDetalleBody();
+  }));
+  body.querySelectorAll('.pedido-edit-price').forEach(inp => inp.addEventListener('input', (e) => {
+    const idx = Number(e.target.dataset.idx);
+    pedidoDetalleComprasEdit[idx].unitPrice = Math.max(0, Number(e.target.value) || 0);
+    renderPedidoDetalleBody();
+  }));
+  body.querySelectorAll('[data-remove-row]').forEach(btn => btn.addEventListener('click', (e) => {
+    const idx = Number(e.target.dataset.removeRow);
+    pedidoDetalleComprasEdit.splice(idx, 1);
+    renderPedidoDetalleBody();
+  }));
+}
+
+async function iniciarEdicionComprasPedido(){
+  if (!state.productos.length){
+    try{ await loadProductos(); }catch(e){ /* loadProductos ya muestra el toast de error */ }
+  }
+  const compras = Array.isArray(pedidoDetalleActual.compras) ? pedidoDetalleActual.compras : [];
+  pedidoDetalleComprasEdit = compras.map(c => ({
+    id: c.id ?? c.productId ?? c.product_id ?? null,
+    name: c.name || c.nombre || 'Producto',
+    unitPrice: Number(c.unitPrice ?? c.precio ?? 0) || 0,
+    quantity: Number(c.quantity ?? c.cantidad ?? 1) || 1
+  }));
+  pedidoDetalleEditando = true;
+  renderPedidoDetalleBody();
+}
+
+function agregarProductoAEdicionPedido(){
+  const primero = state.productos[0];
+  if (!primero) return;
+  pedidoDetalleComprasEdit.push({
+    id: primero.id,
+    name: primero.nombre,
+    unitPrice: Number(primero.precio) || 0,
+    quantity: 1
+  });
+  renderPedidoDetalleBody();
+}
+
+async function guardarEdicionComprasPedido(){
+  try{
+    const compras = pedidoDetalleComprasEdit
+      .filter(c => (Number(c.quantity) || 0) > 0)
+      .map(c => ({ id: c.id, name: c.name, unitPrice: Number(c.unitPrice) || 0, quantity: Number(c.quantity) || 0 }));
+
+    const data = await apiFetch(endpointPedidoDetalle(), { method: 'PATCH', body: JSON.stringify({ compras }) });
+    const actualizado = data.pedido;
+    if (!actualizado) throw new Error('El servidor no devolvió el pedido actualizado.');
+
+    const listaKey = pedidoDetalleEsSeguimiento(pedidoDetalleActual) ? 'pedidosSeguimiento' : 'pedidosNuevos';
+    const idx = state[listaKey].findIndex(x => x.id === pedidoDetalleActual.id);
+    if (idx !== -1) state[listaKey][idx] = actualizado;
+
+    pedidoDetalleActual = actualizado;
+    pedidoDetalleEditando = false;
+    renderPedidoDetalleBody();
+
+    if (listaKey === 'pedidosNuevos') renderPedidosNuevos();
+    else { renderPedidosGuardados(); renderPedidosSeguimiento(); }
+    actualizarBadgesPedidos();
+
+    showToast('Pedido actualizado.');
+  }catch(e){ showToast('Error guardando cambios: ' + e.message, true); }
 }
 
 async function loadUsuarios(){
