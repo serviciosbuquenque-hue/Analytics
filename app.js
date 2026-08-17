@@ -23,6 +23,8 @@ const state = {
   usuariosPage: 1,
   usuariosPageSize: 50,
   usuariosQuery: '',
+  clientes: [],
+  clientesQuery: '',
   prodImages: [],   // imágenes en edición del modal de producto (public_id o dataURL)
   packImages: [],   // imágenes en edición del modal de pack
   invTab: 'todos',  // pestaña activa en Inventario: todos | bajo | sin
@@ -363,7 +365,7 @@ function goToView(view){
   if (view === 'inventario') loadProductos();
   if (view === 'packs') loadPacks();
   if (view === 'pedidos') loadPedidosSection();
-  if (view === 'usuarios') loadUsuarios();
+  if (view === 'usuarios'){ loadUsuarios(); loadClientes(); }
   if (view === 'notificaciones') loadNotificationBanner();
 }
 
@@ -1759,6 +1761,181 @@ document.getElementById('usr-search')?.addEventListener('input', (event) => {
   state.usuariosPage = 1;
   renderUsuarios();
 });
+
+/* ------------------------- Pestañas Visitas / Clientes ------------------------- */
+
+document.querySelectorAll('#usr-tabs .seg-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.utab;
+    document.querySelectorAll('#usr-tabs .seg-tab').forEach(b => b.classList.toggle('active', b === btn));
+    document.getElementById('usr-panel-visitas').classList.toggle('active', tab === 'visitas');
+    document.getElementById('usr-panel-clientes').classList.toggle('active', tab === 'clientes');
+    if (tab === 'clientes') renderClientes();
+  });
+});
+
+/* --------------------- Clientes que compraron (según pedidos) --------------------- */
+// Agrupa todos los pedidos (nuevos + en seguimiento) por cliente usando la misma
+// lógica de "mismo comprador" ya usada para detectar reincidentes, para armar
+// un listado de clientes con lo que ha comprado cada uno.
+
+let clientesFiltradosActuales = [];
+
+function buildClientesFromPedidos(){
+  const todos = [...state.pedidosNuevos, ...state.pedidosSeguimiento];
+  const grupos = [];
+
+  todos.forEach(p => {
+    const grupo = grupos.find(g => g.pedidos.some(existente => ordersBelongToSameUser(existente, p)));
+    if (grupo) grupo.pedidos.push(p);
+    else grupos.push({ pedidos: [p] });
+  });
+
+  return grupos.map(g => {
+    const pedidos = g.pedidos.slice().sort((a, b) => new Date(getPedidoFecha(b)) - new Date(getPedidoFecha(a)));
+    const masReciente = pedidos[0];
+    const totalGastado = pedidos.reduce((acc, p) => acc + Number(p.precio_compra_total || 0), 0);
+
+    const productosMap = new Map();
+    pedidos.forEach(p => {
+      const compras = Array.isArray(p.compras) ? p.compras : [];
+      compras.forEach(c => {
+        const nombre = c.name || c.nombre || 'Producto sin nombre';
+        const cantidad = Number(c.quantity ?? c.cantidad ?? 1) || 0;
+        const importe = (Number(c.unitPrice ?? c.precio ?? 0) || 0) * cantidad;
+        const actual = productosMap.get(nombre) || { cantidad: 0, importe: 0 };
+        actual.cantidad += cantidad;
+        actual.importe += importe;
+        productosMap.set(nombre, actual);
+      });
+    });
+
+    return {
+      nombre: masReciente.nombre_comprador || 'Sin nombre',
+      telefono: masReciente.telefono_comprador || '',
+      correo: masReciente.correo_comprador || '',
+      direccion: masReciente.direccion_envio || '',
+      ultimaFecha: getPedidoFecha(masReciente),
+      totalPedidos: pedidos.length,
+      totalGastado,
+      pedidos,
+      productos: Array.from(productosMap.entries())
+        .map(([nombre, v]) => ({ nombre, cantidad: v.cantidad, importe: v.importe }))
+        .sort((a, b) => b.cantidad - a.cantidad)
+    };
+  });
+}
+
+async function loadClientes(){
+  try{
+    await loadPedidosSection();
+    state.clientes = buildClientesFromPedidos();
+    renderClientes();
+  }catch(e){ showToast('Error cargando clientes: ' + e.message, true); }
+}
+
+function getFilteredClientes(){
+  const query = (state.clientesQuery || '').trim().toLowerCase();
+  const source = state.clientes || [];
+  if (!query) return source;
+  return source.filter(c => {
+    const haystack = [c.nombre, c.telefono, c.correo, c.direccion].filter(Boolean).join(' ').toLowerCase();
+    return haystack.includes(query);
+  });
+}
+
+function renderClientes(){
+  const tbody = document.getElementById('cli-tbody');
+  const empty = document.getElementById('cli-empty');
+  const summary = document.getElementById('cli-summary');
+  if (!tbody) return;
+
+  const filtered = getFilteredClientes().slice().sort((a, b) => b.totalGastado - a.totalGastado);
+  clientesFiltradosActuales = filtered;
+
+  tbody.innerHTML = filtered.map((c, idx) => `
+    <tr data-cli-idx="${idx}">
+      <td data-label="Cliente">${escapeHtml(c.nombre)}</td>
+      <td data-label="Teléfono">${escapeHtml(c.telefono || '—')}</td>
+      <td data-label="Correo">${escapeHtml(c.correo || '—')}</td>
+      <td data-label="Pedidos">${c.totalPedidos}</td>
+      <td data-label="Total gastado">$${c.totalGastado.toFixed(2)}</td>
+      <td data-label="Última compra">${c.ultimaFecha ? new Date(c.ultimaFecha).toLocaleDateString() : '—'}</td>
+      <td data-label="Acciones"><button class="btn btn-ghost btn-small" data-cli-ver="${idx}" type="button">Ver detalle</button></td>
+    </tr>`).join('');
+
+  if (summary) summary.textContent = filtered.length ? `Mostrando ${filtered.length} cliente(s).` : 'Sin resultados para esta búsqueda.';
+  if (empty) empty.hidden = filtered.length !== 0;
+
+  const totalPedidos = filtered.reduce((acc, c) => acc + c.totalPedidos, 0);
+  const totalIngresos = filtered.reduce((acc, c) => acc + c.totalGastado, 0);
+  setText('cli-total-count', String(filtered.length));
+  setText('cli-pedidos-total', String(totalPedidos));
+  setText('cli-ingresos-total', '$' + totalIngresos.toFixed(2));
+}
+
+document.getElementById('cli-tbody')?.addEventListener('click', (event) => {
+  const btn = event.target.closest('[data-cli-ver]');
+  const row = event.target.closest('[data-cli-idx]');
+  const idx = btn ? btn.dataset.cliVer : (row ? row.dataset.cliIdx : null);
+  if (idx === null || idx === undefined) return;
+  const cliente = clientesFiltradosActuales[Number(idx)];
+  if (cliente) showClienteDetalle(cliente);
+});
+
+document.getElementById('cli-search')?.addEventListener('input', (event) => {
+  state.clientesQuery = event.target.value;
+  renderClientes();
+});
+document.getElementById('cli-refresh')?.addEventListener('click', loadClientes);
+
+function showClienteDetalle(c){
+  const body = document.getElementById('cliente-detalle-body');
+  if (!body) return;
+
+  body.innerHTML = `
+    <dl class="detail-grid">
+      <dt>Cliente</dt><dd>${escapeHtml(c.nombre)}</dd>
+      <dt>Teléfono</dt><dd>${escapeHtml(c.telefono || '—')}</dd>
+      <dt>Correo</dt><dd>${escapeHtml(c.correo || '—')}</dd>
+      <dt>Dirección</dt><dd>${escapeHtml(c.direccion || '—')}</dd>
+      <dt>Pedidos</dt><dd>${c.totalPedidos}</dd>
+      <dt>Total gastado</dt><dd>$${c.totalGastado.toFixed(2)}</dd>
+    </dl>
+    <div class="compras-list">
+      <div class="compras-list-header"><strong>Productos comprados (histórico)</strong></div>
+      ${c.productos.length ? `
+        <table class="cli-productos-table">
+          <thead><tr><th>Producto</th><th>Cant. total</th><th>Importe</th></tr></thead>
+          <tbody>
+            ${c.productos.map(p => `<tr><td>${escapeHtml(p.nombre)}</td><td>${p.cantidad}</td><td>$${p.importe.toFixed(2)}</td></tr>`).join('')}
+          </tbody>
+        </table>` : `<p class="hint">Sin productos registrados.</p>`}
+    </div>
+    <div class="compras-list">
+      <div class="compras-list-header"><strong>Pedidos realizados</strong></div>
+      <div class="cli-pedidos-list">
+        ${c.pedidos.map(p => `
+          <div class="mini-row" data-cli-pedido="${getOriginalPedidoId(p)}">
+            <span class="k">${escapeHtml(getPedidoFecha(p) ? new Date(getPedidoFecha(p)).toLocaleDateString() : '—')} · Orden ${escapeHtml(getPedidoNumero(p) || '—')}</span>
+            <span class="v">$${Number(p.precio_compra_total || 0).toFixed(2)}</span>
+          </div>`).join('')}
+      </div>
+    </div>
+  `;
+
+  body.querySelectorAll('[data-cli-pedido]').forEach(row => {
+    row.addEventListener('click', () => {
+      const pedido = c.pedidos.find(x => getOriginalPedidoId(x) === row.dataset.cliPedido);
+      if (pedido){
+        closeModal('modal-cliente');
+        showPedidoDetalle(pedido);
+      }
+    });
+  });
+
+  openModal('modal-cliente');
+}
 
 /* --------------------------------- Utils --------------------------------- */
 

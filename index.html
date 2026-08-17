@@ -539,40 +539,83 @@
     <section class="view" id="view-usuarios">
       <header class="view-header">
         <h2>Registro de usuarios</h2>
-        <p>Visitas y estadísticas registradas de quienes navegan la tienda.</p>
-        <div class="header-actions">
+        <p>Visitas de la tienda y clientes que han comprado, según los pedidos registrados.</p>
+      </header>
+
+      <div class="seg-tabs" id="usr-tabs">
+        <button class="seg-tab active" data-utab="visitas">Visitas</button>
+        <button class="seg-tab" data-utab="clientes">Clientes que compraron</button>
+      </div>
+
+      <div class="tab-panel active" id="usr-panel-visitas">
+        <div class="header-actions" style="margin-bottom:14px;">
           <input type="search" id="usr-search" class="search" placeholder="Buscar usuario, IP, país, navegador...">
           <button class="btn btn-ghost" id="usr-refresh">↻ Actualizar</button>
         </div>
-      </header>
-      <div class="usr-panel">
-        <div class="usr-summary-grid">
-          <div class="usr-stat-card">
-            <span>Total</span>
-            <strong id="usr-total-count">0</strong>
+        <div class="usr-panel">
+          <div class="usr-summary-grid">
+            <div class="usr-stat-card">
+              <span>Total</span>
+              <strong id="usr-total-count">0</strong>
+            </div>
+            <div class="usr-stat-card">
+              <span>Recurr.</span>
+              <strong id="usr-recurrent-count">0</strong>
+            </div>
+            <div class="usr-stat-card">
+              <span>Únicos</span>
+              <strong id="usr-unique-count">0</strong>
+            </div>
           </div>
-          <div class="usr-stat-card">
-            <span>Recurr.</span>
-            <strong id="usr-recurrent-count">0</strong>
-          </div>
-          <div class="usr-stat-card">
-            <span>Únicos</span>
-            <strong id="usr-unique-count">0</strong>
+          <div class="table-wrap">
+            <div class="usr-summary" id="usr-summary">Mostrando 0 registros.</div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha/Hora</th><th>IP</th><th>País</th><th>Tipo</th><th>Origen</th><th>Navegador</th><th>SO</th>
+                </tr>
+              </thead>
+              <tbody id="usr-tbody"></tbody>
+            </table>
+            <p class="empty" id="usr-empty" hidden>No hay registros todavía.</p>
+            <div class="usr-actions">
+              <button class="btn btn-ghost" id="usr-load-more" type="button">Cargar más</button>
+            </div>
           </div>
         </div>
-        <div class="table-wrap">
-          <div class="usr-summary" id="usr-summary">Mostrando 0 registros.</div>
-          <table>
-            <thead>
-              <tr>
-                <th>Fecha/Hora</th><th>IP</th><th>País</th><th>Tipo</th><th>Origen</th><th>Navegador</th><th>SO</th>
-              </tr>
-            </thead>
-            <tbody id="usr-tbody"></tbody>
-          </table>
-          <p class="empty" id="usr-empty" hidden>No hay registros todavía.</p>
-          <div class="usr-actions">
-            <button class="btn btn-ghost" id="usr-load-more" type="button">Cargar más</button>
+      </div>
+
+      <div class="tab-panel" id="usr-panel-clientes">
+        <div class="header-actions" style="margin-bottom:14px;">
+          <input type="search" id="cli-search" class="search" placeholder="Buscar cliente por nombre, teléfono o correo...">
+          <button class="btn btn-ghost" id="cli-refresh">↻ Actualizar</button>
+        </div>
+        <div class="usr-panel">
+          <div class="usr-summary-grid">
+            <div class="usr-stat-card">
+              <span>Clientes</span>
+              <strong id="cli-total-count">0</strong>
+            </div>
+            <div class="usr-stat-card">
+              <span>Pedidos</span>
+              <strong id="cli-pedidos-total">0</strong>
+            </div>
+            <div class="usr-stat-card">
+              <span>Ingresos</span>
+              <strong id="cli-ingresos-total">$0.00</strong>
+            </div>
+          </div>
+          <div class="table-wrap cli-table-wrap">
+            <div class="usr-summary" id="cli-summary">Mostrando 0 clientes.</div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Cliente</th><th>Teléfono</th><th>Correo</th><th>Pedidos</th><th>Total gastado</th><th>Última compra</th><th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="cli-tbody"></tbody>
+            </table>
+            <p class="empty" id="cli-empty" hidden>Todavía no hay clientes con pedidos registrados.</p>
           </div>
         </div>
       </div>
@@ -793,8 +836,22 @@
   </div>
 </div>
 
+<!-- ===================== MODAL DETALLE CLIENTE ===================== -->
+<div class="modal-backdrop" id="modal-cliente">
+  <div class="modal">
+    <header class="modal-header">
+      <h3>Detalle del cliente</h3>
+      <button class="modal-close" data-close="modal-cliente">✕</button>
+    </header>
+    <div class="modal-body" id="cliente-detalle-body"></div>
+    <footer class="modal-footer">
+      <button class="btn btn-ghost" data-close="modal-cliente">Cerrar</button>
+    </footer>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=3"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>

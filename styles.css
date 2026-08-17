@@ -855,6 +855,15 @@ tbody tr:hover td{ background: var(--surface-2); }
 .pedidos-panel{ display:none; }
 .pedidos-panel.active{ display:block; animation: fadein .18s ease; }
 
+/* Paneles de pestañas genéricos (usado en "Registro de usuarios": Visitas / Clientes) */
+.tab-panel{ display:none; }
+.tab-panel.active{ display:block; animation: fadein .18s ease; }
+
+#view-usuarios .cli-table-wrap tbody tr{ cursor:pointer; }
+#view-usuarios .cli-table-wrap tbody tr:hover{ background: var(--surface-2); }
+.cli-productos-table td, .cli-productos-table th{ padding: 8px 10px; }
+.cli-pedidos-list .mini-row:hover{ color: var(--text); cursor:pointer; }
+
 /* Ajuste compacto de la sección de pedidos para aprovechar mejor el espacio tanto en escritorio como en móvil. */
 #view-pedidos .view-header{ margin-bottom: 16px; }
 #view-pedidos .view-header p{ max-width: 100%; }
@@ -1146,6 +1155,52 @@ textarea{ resize: vertical; }
     padding: 7px 5px;
   }
 
+  #view-usuarios .cli-table-wrap {
+    border: none;
+    box-shadow: none;
+    background: transparent;
+    overflow: visible;
+  }
+  #view-usuarios .cli-table-wrap table {
+    width: 100%;
+    border: none;
+  }
+  #view-usuarios .cli-table-wrap thead {
+    display: none;
+  }
+  #view-usuarios .cli-table-wrap tbody tr {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 8px;
+    padding: 12px 12px 13px;
+    margin-bottom: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-m);
+    background: var(--surface);
+    box-shadow: var(--shadow-s);
+  }
+  #view-usuarios .cli-table-wrap tbody td {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: none;
+    color: var(--text);
+    font-size: 12.5px;
+    line-height: 1.4;
+  }
+  #view-usuarios .cli-table-wrap tbody td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 2px;
+    font-size: 10px;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: .08em;
+  }
+  #view-usuarios .cli-table-wrap tbody td:last-child {
+    grid-column: 1 / -1;
+    margin-top: 4px;
+  }
   #view-packs .table-wrap {
     border: none;
     box-shadow: none;
