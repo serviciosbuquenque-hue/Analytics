@@ -63,6 +63,15 @@ function setHtml(id, value){
   return el;
 }
 
+// Normaliza texto para búsquedas: minúsculas y sin tildes/diacríticos, así
+// "cafe" encuentra "Café" y viceversa en cualquier buscador del panel.
+function normalizeText(str){
+  return String(str || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
 async function apiFetch(path, options = {}){
   if (!apiUrlOk()){
     showToast('Configura primero la URL del backend en "Conexión".', true);
@@ -637,7 +646,7 @@ function actualizarBadgeInventario(){
 }
 
 function renderProductos(){
-  const term = document.getElementById('inv-search').value.trim().toLowerCase();
+  const term = normalizeText(document.getElementById('inv-search').value.trim());
   const grid = document.getElementById('inv-grid');
 
   const conEstado = state.productos.map(p => ({ p, estado: estadoStockProducto(p) }));
@@ -653,7 +662,7 @@ function renderProductos(){
 
   const list = filtrados
     .map(x => x.p)
-    .filter(p => !term || (p.nombre || '').toLowerCase().includes(term));
+    .filter(p => !term || normalizeText(p.nombre).includes(term));
 
   grid.innerHTML = '';
   document.getElementById('inv-empty').hidden = list.length !== 0;
@@ -907,9 +916,9 @@ async function loadPacks(){
 }
 
 function renderPacks(){
-  const term = document.getElementById('pack-search').value.trim().toLowerCase();
+  const term = normalizeText(document.getElementById('pack-search').value.trim());
   const tbody = document.getElementById('pack-tbody');
-  const list = state.packs.filter(p => !term || (p.nombre || '').toLowerCase().includes(term));
+  const list = state.packs.filter(p => !term || normalizeText(p.nombre).includes(term));
   tbody.innerHTML = '';
   document.getElementById('pack-empty').hidden = list.length !== 0;
 
@@ -1155,7 +1164,7 @@ function esClienteReincidente(pedido, historial){
 }
 
 function pedidosSearchTerm(){
-  return document.getElementById('pedidos-search').value.trim().toLowerCase();
+  return normalizeText(document.getElementById('pedidos-search').value.trim());
 }
 
 function getPedidoNumero(p){
@@ -1164,10 +1173,12 @@ function getPedidoNumero(p){
 
 function coincideBusquedaPedido(p, term){
   if (!term) return true;
-  const nombre = (p.nombre_comprador || '').toLowerCase();
-  const telefono = (p.telefono_comprador || '').toLowerCase();
-  const orden = getPedidoNumero(p).toLowerCase();
-  return nombre.includes(term) || telefono.includes(term) || orden.includes(term);
+  const nombre = normalizeText(p.nombre_comprador);
+  const telefono = normalizeText(p.telefono_comprador);
+  const orden = normalizeText(getPedidoNumero(p));
+  const compras = Array.isArray(p.compras) ? p.compras : [];
+  const productos = normalizeText(compras.map(c => c.name || c.nombre || '').join(' '));
+  return nombre.includes(term) || telefono.includes(term) || orden.includes(term) || productos.includes(term);
 }
 
 function toBoolean(value){
@@ -1681,12 +1692,12 @@ async function loadUsuarios(){
 }
 
 function getFilteredUsuarios(){
-  const query = (state.usuariosQuery || '').trim().toLowerCase();
+  const query = normalizeText(state.usuariosQuery);
   const source = state.usuarios || [];
   if (!query) return source;
 
   return source.filter(u => {
-    const haystack = [
+    const haystack = normalizeText([
       u.fecha_hora_entrada,
       u.ip,
       u.pais,
@@ -1695,7 +1706,7 @@ function getFilteredUsuarios(){
       u.fuente_trafico,
       u.navegador,
       u.sistema_operativo
-    ].filter(Boolean).join(' ').toLowerCase();
+    ].filter(Boolean).join(' '));
     return haystack.includes(query);
   });
 }
@@ -1835,11 +1846,12 @@ async function loadClientes(){
 }
 
 function getFilteredClientes(){
-  const query = (state.clientesQuery || '').trim().toLowerCase();
+  const query = normalizeText(state.clientesQuery);
   const source = state.clientes || [];
   if (!query) return source;
   return source.filter(c => {
-    const haystack = [c.nombre, c.telefono, c.correo, c.direccion].filter(Boolean).join(' ').toLowerCase();
+    const productos = c.productos.map(p => p.nombre).join(' ');
+    const haystack = normalizeText([c.nombre, c.telefono, c.correo, c.direccion, productos].filter(Boolean).join(' '));
     return haystack.includes(query);
   });
 }
