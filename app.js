@@ -1901,9 +1901,46 @@ document.getElementById('cli-search')?.addEventListener('input', (event) => {
 });
 document.getElementById('cli-refresh')?.addEventListener('click', loadClientes);
 
+let clienteDetalleActual = null;
+let clienteDetallePedidoId = null;
+let clienteDetalleTab = 'pedidos';
+
 function showClienteDetalle(c){
+  clienteDetalleActual = c;
+  clienteDetallePedidoId = c.pedidos.length ? getOriginalPedidoId(c.pedidos[0]) : null;
+  clienteDetalleTab = 'pedidos';
+  renderClienteDetalleBody();
+  openModal('modal-cliente');
+}
+
+function renderClientePedidoPreview(p){
+  if (!p) return `<p class="hint">Este cliente no tiene pedidos.</p>`;
+  const compras = Array.isArray(p.compras) ? p.compras : [];
+  return `
+    <div class="cli-pedido-preview-header">
+      <div>
+        <strong>Orden ${escapeHtml(getPedidoNumero(p) || '—')}</strong>
+        <span class="hint">${escapeHtml(getPedidoFecha(p) ? new Date(getPedidoFecha(p)).toLocaleString() : '—')}</span>
+      </div>
+      <button class="btn btn-ghost btn-small" id="cli-pedido-abrir-completo" type="button">Abrir pedido completo</button>
+    </div>
+    ${compras.length ? `
+      <table>
+        <thead><tr><th>Producto</th><th>Cant.</th><th>Precio</th></tr></thead>
+        <tbody>
+          ${compras.map(item => `<tr><td>${escapeHtml(item.name || item.nombre || '—')}</td><td>${item.quantity ?? item.cantidad ?? 1}</td><td>$${Number(item.unitPrice ?? item.precio ?? 0).toFixed(2)}</td></tr>`).join('')}
+        </tbody>
+      </table>` : `<p class="hint">Este pedido no tiene productos registrados.</p>`}
+    <div class="cli-pedido-preview-total">Total: <strong>$${Number(p.precio_compra_total || 0).toFixed(2)}</strong></div>
+  `;
+}
+
+function renderClienteDetalleBody(){
   const body = document.getElementById('cliente-detalle-body');
-  if (!body) return;
+  const c = clienteDetalleActual;
+  if (!c || !body) return;
+
+  const pedidoSeleccionado = c.pedidos.find(p => getOriginalPedidoId(p) === clienteDetallePedidoId) || c.pedidos[0] || null;
 
   body.innerHTML = `
     <dl class="detail-grid">
@@ -1914,39 +1951,68 @@ function showClienteDetalle(c){
       <dt>Pedidos</dt><dd>${c.totalPedidos}</dd>
       <dt>Total gastado</dt><dd>$${c.totalGastado.toFixed(2)}</dd>
     </dl>
-    <div class="compras-list">
-      <div class="compras-list-header"><strong>Productos comprados (histórico)</strong></div>
-      ${c.productos.length ? `
-        <table class="cli-productos-table">
-          <thead><tr><th>Producto</th><th>Cant. total</th><th>Importe</th></tr></thead>
-          <tbody>
-            ${c.productos.map(p => `<tr><td>${escapeHtml(p.nombre)}</td><td>${p.cantidad}</td><td>$${p.importe.toFixed(2)}</td></tr>`).join('')}
-          </tbody>
-        </table>` : `<p class="hint">Sin productos registrados.</p>`}
+
+    <div class="seg-tabs nested" id="cli-detalle-tabs">
+      <button class="seg-tab ${clienteDetalleTab === 'pedidos' ? 'active' : ''}" data-cdtab="pedidos">Pedidos <span class="seg-tab-count">${c.totalPedidos}</span></button>
+      <button class="seg-tab ${clienteDetalleTab === 'productos' ? 'active' : ''}" data-cdtab="productos">Productos comprados</button>
     </div>
-    <div class="compras-list">
-      <div class="compras-list-header"><strong>Pedidos realizados</strong></div>
-      <div class="cli-pedidos-list">
-        ${c.pedidos.map(p => `
-          <div class="mini-row" data-cli-pedido="${getOriginalPedidoId(p)}">
-            <span class="k">${escapeHtml(getPedidoFecha(p) ? new Date(getPedidoFecha(p)).toLocaleDateString() : '—')} · Orden ${escapeHtml(getPedidoNumero(p) || '—')}</span>
-            <span class="v">$${Number(p.precio_compra_total || 0).toFixed(2)}</span>
-          </div>`).join('')}
+
+    <div class="tab-panel ${clienteDetalleTab === 'pedidos' ? 'active' : ''}" id="cli-detalle-panel-pedidos">
+      <div class="cli-pedidos-split">
+        <div class="cli-pedidos-list-col">
+          ${c.pedidos.map(p => {
+            const pid = getOriginalPedidoId(p);
+            const activo = pid === clienteDetallePedidoId;
+            return `
+            <div class="mini-row cli-pedido-item${activo ? ' active' : ''}" data-cli-pedido="${pid}">
+              <span class="k">${escapeHtml(getPedidoFecha(p) ? new Date(getPedidoFecha(p)).toLocaleDateString() : '—')} · Orden ${escapeHtml(getPedidoNumero(p) || '—')}</span>
+              <span class="v">$${Number(p.precio_compra_total || 0).toFixed(2)}</span>
+            </div>`;
+          }).join('') || `<p class="hint">Este cliente no tiene pedidos.</p>`}
+        </div>
+        <div class="cli-pedido-preview" id="cli-pedido-preview">
+          ${renderClientePedidoPreview(pedidoSeleccionado)}
+        </div>
       </div>
+    </div>
+
+    <div class="tab-panel ${clienteDetalleTab === 'productos' ? 'active' : ''}" id="cli-detalle-panel-productos">
+      ${c.productos.length ? `
+        <div class="cli-productos-scroll">
+          <table class="cli-productos-table">
+            <thead><tr><th>Producto</th><th>Cant. total</th><th>Importe</th></tr></thead>
+            <tbody>
+              ${c.productos.map(p => `<tr><td>${escapeHtml(p.nombre)}</td><td>${p.cantidad}</td><td>$${p.importe.toFixed(2)}</td></tr>`).join('')}
+            </tbody>
+          </table>
+        </div>` : `<p class="hint">Sin productos registrados.</p>`}
     </div>
   `;
 
+  body.querySelectorAll('#cli-detalle-tabs .seg-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      clienteDetalleTab = btn.dataset.cdtab;
+      renderClienteDetalleBody();
+    });
+  });
+
   body.querySelectorAll('[data-cli-pedido]').forEach(row => {
     row.addEventListener('click', () => {
-      const pedido = c.pedidos.find(x => getOriginalPedidoId(x) === row.dataset.cliPedido);
+      clienteDetallePedidoId = row.dataset.cliPedido;
+      renderClienteDetalleBody();
+    });
+  });
+
+  const abrirBtn = document.getElementById('cli-pedido-abrir-completo');
+  if (abrirBtn){
+    abrirBtn.addEventListener('click', () => {
+      const pedido = c.pedidos.find(x => getOriginalPedidoId(x) === clienteDetallePedidoId);
       if (pedido){
         closeModal('modal-cliente');
         showPedidoDetalle(pedido);
       }
     });
-  });
-
-  openModal('modal-cliente');
+  }
 }
 
 /* --------------------------------- Utils --------------------------------- */

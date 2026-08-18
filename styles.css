@@ -861,8 +861,33 @@ tbody tr:hover td{ background: var(--surface-2); }
 
 #view-usuarios .cli-table-wrap tbody tr{ cursor:pointer; }
 #view-usuarios .cli-table-wrap tbody tr:hover{ background: var(--surface-2); }
+
+/* ---- Modal de detalle de cliente: pestañas Pedidos / Productos ---- */
+.cli-productos-scroll{ max-height: 320px; overflow-y:auto; -webkit-overflow-scrolling:touch; border:1px solid var(--border); border-radius: var(--radius-m); }
+.cli-productos-table{ width:100%; }
 .cli-productos-table td, .cli-productos-table th{ padding: 8px 10px; }
-.cli-pedidos-list .mini-row:hover{ color: var(--text); cursor:pointer; }
+.cli-productos-table thead th{ position:sticky; top:0; background: var(--surface); }
+
+.cli-pedidos-split{ display:flex; flex-direction:column; gap:12px; }
+.cli-pedidos-list-col{
+  max-height: 190px; overflow-y:auto; -webkit-overflow-scrolling:touch;
+  border:1px solid var(--border); border-radius: var(--radius-m);
+}
+.cli-pedido-item{ margin:0; padding:10px 12px; border-bottom:1px solid var(--border); cursor:pointer; }
+.cli-pedido-item:last-child{ border-bottom:none; }
+.cli-pedido-item:hover{ background: var(--surface-2); }
+.cli-pedido-item.active{ background: rgba(245,166,35,.10); border-left:3px solid var(--accent); padding-left:9px; }
+.cli-pedido-item.active .k{ color: var(--text); }
+
+.cli-pedido-preview{
+  border:1px solid var(--border); border-radius: var(--radius-m); padding:12px;
+  max-height: 280px; overflow-y:auto; -webkit-overflow-scrolling:touch;
+}
+.cli-pedido-preview table{ width:100%; font-size:12.5px; margin-top:8px; }
+.cli-pedido-preview-header{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+.cli-pedido-preview-header strong{ display:block; font-size:13.5px; }
+.cli-pedido-preview-header .hint{ display:block; margin-top:2px; }
+.cli-pedido-preview-total{ margin-top:10px; text-align:right; font-size:13px; }
 
 /* Ajuste compacto de la sección de pedidos para aprovechar mejor el espacio tanto en escritorio como en móvil. */
 #view-pedidos .view-header{ margin-bottom: 16px; }
@@ -920,7 +945,7 @@ tbody tr:hover td{ background: var(--surface-2); }
 .modal-close{ background:none; border:none; color: var(--text-faint); font-size:16px; cursor:pointer; flex-shrink:0; width:28px; height:28px; display:flex; align-items:center; justify-content:center; }
 .modal-close:hover{ color: var(--text); }
 .modal-body{
-  padding: 20px; overflow-y:auto; display:flex; flex-direction:column; gap:20px;
+  padding: 10px; overflow-y:auto; display:flex; flex-direction:column; gap:20px;
   scrollbar-width: thin;
   scrollbar-color: rgba(158, 175, 203, 0.72) rgba(19, 22, 31, 0.5);
   -webkit-overflow-scrolling: touch;
@@ -1403,6 +1428,14 @@ textarea{ resize: vertical; }
      scroll horizontal en pantallas angostas. */
   .cli-productos-table{ font-size: 11.5px; }
   .cli-productos-table th, .cli-productos-table td{ padding: 6px 6px; }
+
+  /* Lista de pedidos y vista previa del pedido seleccionado, dentro del
+     modal de cliente: se reduce la altura máxima de cada bloque para
+     que ambos quepan sin necesidad de scroll excesivo en el modal. */
+  .cli-pedidos-list-col{ max-height: 150px; }
+  .cli-pedido-preview{ max-height: 220px; padding: 10px; }
+  .cli-pedido-item{ padding: 8px 10px; font-size:12.5px; }
+  .cli-pedido-preview table{ font-size: 11.5px; }
 }
 
 /* Teléfonos muy angostos (iPhone SE y similares) */

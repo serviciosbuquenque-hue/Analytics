@@ -1,7 +1,7 @@
 // Sube este número cada vez que quieras forzar una limpieza total de caché.
 // No es obligatorio tocarlo en cada deploy (la estrategia network-first ya
 // evita el contenido obsoleto), pero es útil como "botón de pánico".
-const CACHE_VERSION = 'v5';
+const CACHE_VERSION = 'v6';
 const CACHE_NAME = `analytics-panel-${CACHE_VERSION}`;
 
 const ASSETS = [
