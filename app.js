@@ -16,6 +16,7 @@ const state = {
   cloudName: CLOUDINARY_CLOUD_NAME,
   authenticated: false, // se pone en true solo tras un login válido contra el backend
   productos: [],
+  infoMap: {},   // notas especiales por producto (id -> {id, info}), nodo "info" en Firebase
   packs: [],
   pedidosNuevos: [],
   pedidosSeguimiento: [],
@@ -27,7 +28,8 @@ const state = {
   clientesQuery: '',
   prodImages: [],   // imágenes en edición del modal de producto (public_id o dataURL)
   packImages: [],   // imágenes en edición del modal de pack
-  invTab: 'todos',  // pestaña activa en Inventario: todos | bajo | sin
+  invTab: 'todos',  // pestaña activa en Inventario: todos | bajo | sin | control
+  packTab: 'todos',
   stockUmbral: Number(localStorage.getItem('panel_stock_umbral') || 10),
   resumenRango: { preset: 'hoy', desde: null, hasta: null }, // rango activo en Resumen
 };
@@ -70,6 +72,16 @@ function normalizeText(str){
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
+}
+
+// Pequeño debounce utilitario para evitar ejecuciones frecuentes en
+// scroll/resize o inputs rápidos.
+function debounce(fn, wait = 80){
+  let t = null;
+  return function(...args){
+    clearTimeout(t);
+    t = setTimeout(() => fn.apply(this, args), wait);
+  };
 }
 
 async function apiFetch(path, options = {}){
@@ -224,7 +236,37 @@ function getImageDetailPayload(source, folder = 'products'){
   };
 }
 
-async function showImageDetail(source, folder = 'products'){
+let imageDetailCtx = { sources: [], folder: 'products', index: 0 };
+
+function renderImageDetailThumbs(){
+  const wrap = document.getElementById('img-detail-thumbs');
+  const countEl = document.getElementById('img-detail-count');
+  if (!wrap) return;
+  const { sources, folder, index } = imageDetailCtx;
+  if (sources.length <= 1) {
+    wrap.hidden = true;
+    wrap.innerHTML = '';
+    if (countEl) countEl.textContent = '';
+    return;
+  }
+  if (countEl) countEl.textContent = `${index + 1} de ${sources.length}`;
+  wrap.hidden = false;
+  wrap.innerHTML = sources.map((src, i) => {
+    const url = cloudinaryUrl(src, folder) || src;
+    return `<button type="button" class="img-detail-thumb${i === index ? ' active' : ''}" data-idx="${i}"><img src="${url}" alt="Imagen ${i + 1}"></button>`;
+  }).join('');
+  wrap.querySelectorAll('[data-idx]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      imageDetailCtx.index = Number(btn.dataset.idx);
+      renderImageDetailThumbs();
+      renderImageDetailCurrent();
+    });
+  });
+}
+
+async function renderImageDetailCurrent(){
+  const { sources, folder, index } = imageDetailCtx;
+  const source = sources[index];
   const payload = getImageDetailPayload(source, folder);
   const imgPreview = document.getElementById('img-detail-preview');
   const nameEl = document.getElementById('img-detail-name');
@@ -258,6 +300,14 @@ async function showImageDetail(source, folder = 'products'){
   };
 
   imgPreview.src = payload.url;
+}
+
+async function showImageDetail(sourceOrList, folder = 'products', index = 0){
+  const sources = (Array.isArray(sourceOrList) ? sourceOrList : [sourceOrList]).filter(Boolean);
+  if (!sources.length) return;
+  imageDetailCtx = { sources, folder, index: Math.min(Math.max(index, 0), sources.length - 1) };
+  renderImageDetailThumbs();
+  await renderImageDetailCurrent();
   openModal('modal-image-detail');
 }
 
@@ -354,6 +404,58 @@ function compressImage(file, maxDim = 1000, quality = 0.72){
 
 /* ------------------------------ Navegación ------------------------------ */
 
+/* ---------------------- Aviso visual de scroll en seg-tabs ---------------------- */
+/* Cuando un grupo de pestañas (seg-tabs) no cabe en pantalla y hay que
+   deslizar para ver el resto (ej. "Con control" en Inventario), se marca
+   con una clase que activa un degradado en el borde para que se note que
+   hay más pestañas fuera de vista, en vez de que parezca simplemente
+   cortado/oculto. */
+function updateSegTabsFade(el){
+  if (!el) return;
+  const max = el.scrollWidth - el.clientWidth;
+  const overflowing = max > 2;
+  el.classList.toggle('scroll-fade-left', overflowing && el.scrollLeft > 2);
+  el.classList.toggle('scroll-fade-right', overflowing && el.scrollLeft < max - 2);
+}
+
+// Alinea un tab dentro de su contenedor `.seg-tabs` asegurando que quede
+// totalmente visible (útil en móviles cuando hay que desplazar para ver el
+// botón). Usa comportamientos suaves y evita saltos bruscos.
+function ensureSegTabVisible(tab){
+  if (!tab) return;
+  const container = tab.closest('.seg-tabs');
+  if (!container) return;
+  // Si el tab ya está completamente dentro del viewport del contenedor, no hacemos nada.
+  const tabRect = tab.getBoundingClientRect();
+  const contRect = container.getBoundingClientRect();
+  const leftOverflow = tabRect.left < contRect.left + 6; // margen pequeño
+  const rightOverflow = tabRect.right > contRect.right - 6;
+  if (!leftOverflow && !rightOverflow) return;
+
+  // Calcula la posición a desplazar: preferimos centrar ligeramente el tab
+  // o desplazar lo justo para que esté completamente visible.
+  const scrollLeft = container.scrollLeft + (tabRect.left - contRect.left) - 12;
+  // Si el tab sale por la derecha, ajustamos para que su borde derecho quede dentro.
+  const scrollRight = container.scrollLeft + (tabRect.right - contRect.right) + 12;
+  const target = rightOverflow ? scrollRight : scrollLeft;
+  container.scrollTo({ left: target, behavior: 'smooth' });
+}
+function refreshAllSegTabsFade(){
+  document.querySelectorAll('.seg-tabs').forEach(updateSegTabsFade);
+}
+document.addEventListener('scroll', debounce((e) => {
+  const t = e.target;
+  if (t && t.classList && t.classList.contains('seg-tabs')) updateSegTabsFade(t);
+}, 40), { capture: true, passive: true });
+window.addEventListener('resize', debounce(refreshAllSegTabsFade, 120));
+if (window.ResizeObserver){
+  const segTabsObserver = new ResizeObserver(entries => {
+    entries.forEach(entry => updateSegTabsFade(entry.target));
+  });
+  document.querySelectorAll('.seg-tabs').forEach(el => segTabsObserver.observe(el));
+}
+document.addEventListener('DOMContentLoaded', () => requestAnimationFrame(refreshAllSegTabsFade));
+
 function goToView(view){
   // Blindaje: aunque alguien oculte el overlay de login a mano con devtools,
   // esta función sigue sin dejar cambiar de pestaña sin sesión válida.
@@ -376,10 +478,32 @@ function goToView(view){
   if (view === 'pedidos') loadPedidosSection();
   if (view === 'usuarios'){ loadUsuarios(); loadClientes(); }
   if (view === 'notificaciones') loadNotificationBanner();
+  requestAnimationFrame(refreshAllSegTabsFade);
 }
 
 document.querySelectorAll('.nav-item').forEach(btn => {
   btn.addEventListener('click', () => goToView(btn.dataset.view));
+});
+
+// Cuando se hace click en cualquier `.seg-tab`, marcar como activa y
+// desplazarla dentro de su contenedor para que sea visible en pantallas pequeñas.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest && e.target.closest('.seg-tab');
+  if (!btn) return;
+  const parent = btn.closest('.seg-tabs');
+  if (!parent) return;
+  parent.querySelectorAll('.seg-tab').forEach(b => b.classList.toggle('active', b === btn));
+  // Esperamos un frame para permitir que cualquier cambio visual se aplique,
+  // luego forzamos el desplazamiento si es necesario.
+  requestAnimationFrame(() => ensureSegTabVisible(btn));
+});
+
+// Al cargar el DOM, aseguramos que la pestaña activa (si la hay) quede visible.
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.seg-tabs').forEach(group => {
+    const active = group.querySelector('.seg-tab.active');
+    if (active) ensureSegTabVisible(active);
+  });
 });
 
 function openModal(id){ document.getElementById(id).classList.add('open'); }
@@ -596,11 +720,30 @@ async function saveNotificationBanner(){
 
 async function loadProductos(){
   try{
+    // Cache corto para evitar refetchs inmediatos al navegar entre vistas.
+    const now = Date.now();
+    const TTL = 8000; // 8 segundos
+    if (state.productos && state.productos.length && state._productosCacheTime && (now - state._productosCacheTime) < TTL){
+      renderProductos();
+      return;
+    }
     const data = await apiFetch('/api/products');
     state.productos = data.products || [];
+    state._productosCacheTime = Date.now();
     populateProductoCategoriasDropdown();
     renderProductos();
+    loadInfoMap();
   }catch(e){ showToast('Error cargando inventario: ' + e.message, true); }
+}
+
+async function loadInfoMap(){
+  try{
+    const data = await apiFetch('/api/info');
+    const lista = Array.isArray(data.info) ? data.info : [];
+    const map = {};
+    lista.forEach(entry => { if (entry && entry.id) map[entry.id] = entry; });
+    state.infoMap = map;
+  }catch(e){ /* nota especial: fallo silencioso, no bloquea el inventario */ }
 }
 
 function populateProductoCategoriasDropdown(){
@@ -639,6 +782,55 @@ function contarProductosPorStock(){
   return { bajo, sin };
 }
 
+function calcularStatsInventario(){
+  const total = state.productos.length;
+  let conControl = 0, unidades = 0, valor = 0;
+  state.productos.forEach(p => {
+    if (p.aplicar_stock){
+      conControl++;
+      const stock = Number(p.stock ?? 0);
+      unidades += stock;
+      valor += stock * Number(p.precio || 0);
+    }
+  });
+  return { total, conControl, unidades, valor };
+}
+
+function renderInventarioStats(){
+  const cont = document.getElementById('inv-stats');
+  if (!cont) return;
+  const { total, conControl, unidades, valor } = calcularStatsInventario();
+  cont.innerHTML = `
+    <div class="stat-chip">
+      <span class="stat-chip-ico"><i class="fa-solid fa-boxes-stacked"></i></span>
+      <div class="stat-chip-body">
+        <span class="stat-chip-label">Productos</span>
+        <strong class="stat-chip-value">${total}</strong>
+      </div>
+    </div>
+    <div class="stat-chip">
+      <span class="stat-chip-ico stat-chip-ico-teal"><i class="fa-solid fa-shield-halved"></i></span>
+      <div class="stat-chip-body">
+        <span class="stat-chip-label">Con control de stock</span>
+        <strong class="stat-chip-value">${conControl}</strong>
+      </div>
+    </div>
+    <div class="stat-chip">
+      <span class="stat-chip-ico stat-chip-ico-blue"><i class="fa-solid fa-cubes"></i></span>
+      <div class="stat-chip-body">
+        <span class="stat-chip-label">Unidades en stock</span>
+        <strong class="stat-chip-value">${unidades}</strong>
+      </div>
+    </div>
+    <div class="stat-chip">
+      <span class="stat-chip-ico stat-chip-ico-accent"><i class="fa-solid fa-sack-dollar"></i></span>
+      <div class="stat-chip-body">
+        <span class="stat-chip-label">Valor del inventario</span>
+        <strong class="stat-chip-value">$${valor.toFixed(2)}</strong>
+      </div>
+    </div>`;
+}
+
 function actualizarBadgeInventario(){
   const { sin } = contarProductosPorStock();
   const badge = document.getElementById('badge-inventario');
@@ -651,87 +843,97 @@ function renderProductos(){
 
   const conEstado = state.productos.map(p => ({ p, estado: estadoStockProducto(p) }));
   const { bajo, sin } = contarProductosPorStock();
+  const conControl = state.productos.filter(p => p.aplicar_stock).length;
   setText('inv-count-todos', state.productos.length);
   setText('inv-count-bajo', bajo);
   setText('inv-count-sin', sin);
+  setText('inv-count-control', conControl);
   actualizarBadgeInventario();
+  renderInventarioStats();
 
   let filtrados = conEstado;
   if (state.invTab === 'bajo') filtrados = conEstado.filter(x => x.estado === 'bajo');
   if (state.invTab === 'sin') filtrados = conEstado.filter(x => x.estado === 'sin');
+  if (state.invTab === 'control') filtrados = conEstado.filter(x => x.p.aplicar_stock);
 
   const list = filtrados
     .map(x => x.p)
     .filter(p => !term || normalizeText(p.nombre).includes(term));
 
-  grid.innerHTML = '';
-  document.getElementById('inv-empty').hidden = list.length !== 0;
-
-  list.forEach(p => {
+  // Construimos el HTML en un solo paso para minimizar reflows.
+  const html = list.map(p => {
     const imgUrl = cloudinaryUrl((p.imagenes || [])[0]);
     const estado = estadoStockProducto(p);
-    const card = document.createElement('article');
-    card.className = 'product-card' + (estado === 'bajo' ? ' stock-bajo' : estado === 'sin' ? ' stock-sin' : '') + (p.aplicar_stock ? ' stock-control-on' : ' stock-control-off');
     const available = p.disponibilidad !== false;
-    const stockPill = estado === 'sin'
-      ? `<span class="pill pill-danger">Sin stock</span>`
-      : estado === 'bajo'
-        ? `<span class="pill pill-warn">Stock bajo</span>`
-        : '';
-    const controlPill = p.aplicar_stock
-      ? `<span class="pill pill-control-on">Control stock</span>`
-      : `<span class="pill pill-control-off">Sin control</span>`;
-    card.innerHTML = `
-      <div class="product-card-img">
-        ${imgUrl ? `<img class="product-thumb" src="${imgUrl}" alt="${escapeHtml(p.nombre)}">` : `<div class="thumb-placeholder">📦</div>`}
-        ${imgUrl ? `<div class="image-meta">Cargando...</div>` : ''}
-        ${imgUrl ? `<button class="img-detail-btn" title="Ver detalle de imagen" data-img-detail="${p.id}">🔍</button>` : ''}
-      </div>
-      <div class="product-card-body">
-        <div class="product-card-title">
-          <div>
-            <h3>${escapeHtml(p.nombre)}</h3>
-            <p class="product-card-category">${escapeHtml(p.categoria || '—')}</p>
+    const stockPill = estado === 'sin' ? `<span class="pill pill-danger">Sin stock</span>` : estado === 'bajo' ? `<span class="pill pill-warn">Stock bajo</span>` : '';
+    const controlPill = p.aplicar_stock ? `<span class="pill pill-control-on">Control stock</span>` : `<span class="pill pill-control-off">Sin control</span>`;
+    return `
+      <article class="product-card${estado === 'bajo' ? ' stock-bajo' : estado === 'sin' ? ' stock-sin' : ''}${p.aplicar_stock ? ' stock-control-on' : ' stock-control-off'}">
+        <div class="product-card-img">
+          ${imgUrl ? `<img class="product-thumb" src="${imgUrl}" alt="${escapeHtml(p.nombre)}">` : `<div class="thumb-placeholder"><i class="fa-solid fa-box-open"></i></div>`}
+          ${imgUrl ? `<div class="image-meta">Cargando...</div>` : ''}
+          ${imgUrl ? `<button class="img-detail-btn" title="Ver detalle de imagen" data-img-detail="${p.id}"><i class="fa-solid fa-magnifying-glass"></i></button>` : ''}
+        </div>
+        <div class="product-card-body">
+          <div class="product-card-title">
+            <div>
+              <h3>${escapeHtml(p.nombre)}</h3>
+              <p class="product-card-category">${escapeHtml(p.categoria || '—')}</p>
+            </div>
+            <div class="product-card-statuses">
+              <span class="pill ${available ? 'pill-yes' : 'pill-no'}">${available ? 'Disponible' : 'Oculto'}</span>
+              ${controlPill}
+            </div>
           </div>
-          <div class="product-card-statuses">
-            <span class="pill ${available ? 'pill-yes' : 'pill-no'}">${available ? 'Disponible' : 'Oculto'}</span>
-            ${controlPill}
+          <div class="product-card-meta">
+            <div><span>Precio</span><strong>$${Number(p.precio || 0).toFixed(2)}</strong></div>
+            <div><span>Stock</span><strong>${p.stock ?? 0} ${stockPill}</strong></div>
+            <div><span>Oferta</span><strong>${p.oferta ? `-${p.descuento || 0}%` : 'No'}</strong></div>
+            <div><span>Más vendido</span><strong>${p.mas_vendido ? 'Sí' : 'No'}</strong></div>
+          </div>
+          <div class="product-card-actions">
+            <button class="btn btn-ghost btn-small" data-edit="${p.id}">Editar</button>
+            <button class="btn btn-danger btn-small" data-del="${p.id}">Eliminar</button>
           </div>
         </div>
-        <div class="product-card-meta">
-          <div><span>Precio</span><strong>$${Number(p.precio || 0).toFixed(2)}</strong></div>
-          <div><span>Stock</span><strong>${p.stock ?? 0} ${stockPill}</strong></div>
-          <div><span>Oferta</span><strong>${p.oferta ? `-${p.descuento || 0}%` : 'No'}</strong></div>
-          <div><span>Más vendido</span><strong>${p.mas_vendido ? 'Sí' : 'No'}</strong></div>
-        </div>
-        <div class="product-card-actions">
-          <button class="btn btn-ghost btn-small" data-edit="${p.id}">Editar</button>
-          <button class="btn btn-danger btn-small" data-del="${p.id}">Eliminar</button>
-        </div>
-      </div>`;
-    grid.appendChild(card);
+      </article>`;
+  }).join('');
 
-    const imgEl = card.querySelector('img.product-thumb');
-    const labelEl = card.querySelector('.image-meta');
-    if (imgEl && labelEl) {
+  grid.innerHTML = html;
+  document.getElementById('inv-empty').hidden = list.length !== 0;
+
+  // Mejora de imágenes: carga diferida y decoding async para mejorar FPS.
+  grid.querySelectorAll('img.product-thumb').forEach(imgEl => {
+    imgEl.loading = 'lazy';
+    imgEl.decoding = 'async';
+    const card = imgEl.closest('.product-card');
+    const labelEl = card ? card.querySelector('.image-meta') : null;
+    if (labelEl) {
       const updateMeta = () => setImageMetaInfo(imgEl, labelEl);
-      imgEl.addEventListener('load', updateMeta);
-      imgEl.addEventListener('error', () => { labelEl.textContent = 'Imagen no disponible'; });
-      if (imgEl.complete && imgEl.naturalWidth) {
-        updateMeta();
+      if (imgEl.complete && imgEl.naturalWidth) updateMeta();
+      else {
+        imgEl.addEventListener('load', updateMeta, { once: true });
+        imgEl.addEventListener('error', () => { labelEl.textContent = 'Imagen no disponible'; }, { once: true });
       }
-    }
-    const detailBtn = card.querySelector('[data-img-detail]');
-    if (detailBtn) {
-      detailBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        showImageDetail((p.imagenes || [])[0], 'products');
-      });
     }
   });
 
-  grid.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openProductoModal(b.dataset.edit)));
-  grid.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => deleteProducto(b.dataset.del)));
+  // Event delegation: un único handler para editar/eliminar/ver imagen.
+  grid.onclick = function(e){
+    const edit = e.target.closest && e.target.closest('[data-edit]');
+    if (edit) return openProductoModal(edit.dataset.edit);
+    const del = e.target.closest && e.target.closest('[data-del]');
+    if (del) return deleteProducto(del.dataset.del);
+    const imgDetail = e.target.closest && e.target.closest('[data-img-detail]');
+    if (imgDetail){
+      e.stopPropagation();
+      const id = imgDetail.dataset.imgDetail;
+      const prod = state.productos.find(x => x.id === id);
+      if (prod) showImageDetail(prod.imagenes || [], 'products', 0);
+    }
+  };
+
+  requestAnimationFrame(() => updateSegTabsFade(document.getElementById('inv-tabs')));
 }
 
 document.getElementById('inv-search').addEventListener('input', renderProductos);
@@ -777,6 +979,8 @@ function openProductoModal(id){
   document.getElementById('prod-activo').checked = productoDisponible;
   document.getElementById('prod-mas-vendido').checked = p ? !!p.mas_vendido : false;
   document.getElementById('prod-delete').hidden = !p;
+  const infoEntry = p ? state.infoMap[p.id] : null;
+  document.getElementById('prod-info').value = infoEntry ? (infoEntry.info || '') : '';
 
   // Precio con descuento: se reconstruye a partir de precio + descuento(%)
   // guardados, para que el usuario vuelva a ver el precio final en vez del
@@ -805,7 +1009,7 @@ function renderImageGrid(gridId, images, folder = 'products'){
       imgEl.src = url;
       imgEl.alt = 'Imagen';
       imgEl.className = 'clickable-image';
-      imgEl.addEventListener('click', () => showImageDetail(img, folder));
+      imgEl.addEventListener('click', () => showImageDetail(images, folder, idx));
       imgEl.addEventListener('error', () => {
         imgEl.replaceWith(Object.assign(document.createElement('div'), { className: 'thumb-placeholder', textContent: '⚠' }));
       });
@@ -874,13 +1078,25 @@ document.getElementById('prod-save').addEventListener('click', async () => {
     showToast('El nombre es obligatorio.', true);
     return;
   }
+  const infoTexto = document.getElementById('prod-info').value.trim();
   try{
+    let productoId = id;
     if (id){
       await apiFetch(`/api/products/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
       showToast('Producto actualizado.');
     } else {
-      await apiFetch('/api/products', { method: 'POST', body: JSON.stringify(payload) });
+      const creado = await apiFetch('/api/products', { method: 'POST', body: JSON.stringify(payload) });
+      productoId = creado && creado.product ? creado.product.id : null;
       showToast('Producto creado.');
+    }
+    if (productoId){
+      try{
+        if (infoTexto){
+          await apiFetch(`/api/info/${productoId}`, { method: 'PUT', body: JSON.stringify({ info: infoTexto }) });
+        } else if (id){
+          await apiFetch(`/api/info/${productoId}`, { method: 'DELETE' });
+        }
+      }catch(infoErr){ showToast('Producto guardado, pero falló la nota especial: ' + infoErr.message, true); }
     }
     closeModal('modal-producto');
     loadProductos();
@@ -898,6 +1114,7 @@ async function deleteProducto(id){
   if (!confirm('¿Eliminar este producto? También se borrarán sus imágenes de Cloudinary.')) return;
   try{
     await apiFetch(`/api/products/${id}`, { method: 'DELETE' });
+    apiFetch(`/api/info/${id}`, { method: 'DELETE' }).catch(() => {});
     showToast('Producto eliminado.');
     loadProductos();
   }catch(e){ showToast('Error eliminando: ' + e.message, true); }
@@ -917,44 +1134,73 @@ async function loadPacks(){
 
 function renderPacks(){
   const term = normalizeText(document.getElementById('pack-search').value.trim());
-  const tbody = document.getElementById('pack-tbody');
-  const list = state.packs.filter(p => !term || normalizeText(p.nombre).includes(term));
-  tbody.innerHTML = '';
+  const grid = document.getElementById('pack-grid');
+
+  const disponiblesCount = state.packs.filter(p => p.disponible !== false).length;
+  const ofertaCount = state.packs.filter(p => p.oferta).length;
+  setText('pack-count-todos', state.packs.length);
+  setText('pack-count-disponibles', disponiblesCount);
+  setText('pack-count-oferta', ofertaCount);
+
+  let filtrados = state.packs;
+  if (state.packTab === 'disponibles') filtrados = filtrados.filter(p => p.disponible !== false);
+  if (state.packTab === 'oferta') filtrados = filtrados.filter(p => p.oferta);
+
+  const list = filtrados.filter(p => !term || normalizeText(p.nombre).includes(term));
+
+  grid.innerHTML = '';
   document.getElementById('pack-empty').hidden = list.length !== 0;
 
   list.forEach(p => {
-    const tr = document.createElement('tr');
     const imgUrl = cloudinaryUrl((p.imagenes || [])[0] || p.imagen, 'packs');
     const caracteristicas = Array.isArray(p.caracteristicas)
       ? p.caracteristicas
       : (p.caracteristicas ? String(p.caracteristicas).split(/\r?\n/) : []);
     const caracteristicasHtml = caracteristicas.length
-      ? `<ul class="pack-features">${caracteristicas.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`
-      : '—';
-    tr.innerHTML = `
-      <td data-label="Imagen">
-        <div class="thumb-wrap">
-          <div class="thumb-img-box">
-            ${imgUrl ? `<img class="thumb" src="${imgUrl}" alt="${escapeHtml(p.nombre)}">` : `<div class="thumb-placeholder">🎁</div>`}
-            ${imgUrl ? `<button class="img-detail-btn" title="Ver detalle de imagen" data-pack-img-detail="${p.id}">🔍</button>` : ''}
+      ? `<ul class="pack-features">${caracteristicas.slice(0, 5).map(item => `<li><i class="fa-solid fa-check"></i>${escapeHtml(item)}</li>`).join('')}${caracteristicas.length > 5 ? `<li class="pack-features-more">+${caracteristicas.length - 5} más</li>` : ''}</ul>`
+      : '<p class="pack-no-features">Sin características listadas.</p>';
+    const precio = Number(p.precio || 0);
+    const descuento = Number(p.descuento || 0);
+    const precioFinal = p.oferta && descuento > 0 ? precio * (1 - descuento / 100) : precio;
+    const disponible = p.disponible !== false;
+
+    const card = document.createElement('article');
+    card.className = 'pack-card' + (p.oferta ? ' pack-oferta' : '') + (!disponible ? ' pack-oculto' : '');
+    card.innerHTML = `
+      <div class="pack-card-img">
+        ${imgUrl ? `<img class="pack-thumb" src="${imgUrl}" alt="${escapeHtml(p.nombre)}">` : `<div class="thumb-placeholder"><i class="fa-solid fa-gift"></i></div>`}
+        ${imgUrl ? `<div class="image-meta">Cargando...</div>` : ''}
+        ${imgUrl ? `<button class="img-detail-btn" title="Ver detalle de imagen" data-pack-img-detail="${p.id}"><i class="fa-solid fa-magnifying-glass"></i></button>` : ''}
+        <div class="pack-badges">
+          ${p.oferta ? `<span class="pack-badge pack-badge-oferta"><i class="fa-solid fa-tag"></i> -${descuento}%</span>` : ''}
+          ${p.top ? `<span class="pack-badge pack-badge-top"><i class="fa-solid fa-star"></i> Top</span>` : ''}
+          ${p.nuevo ? `<span class="pack-badge pack-badge-nuevo">Nuevo</span>` : ''}
+        </div>
+      </div>
+      <div class="pack-card-body">
+        <div class="pack-card-title">
+          <div>
+            <h3>${escapeHtml(p.nombre)}</h3>
+            <p class="pack-card-category">${escapeHtml(p.categoria || 'Pack')}</p>
           </div>
-          <div class="thumb-label">${imgUrl ? 'Cargando...' : 'Sin imagen'}</div>
+          <span class="pill ${disponible ? 'pill-yes' : 'pill-no'}">${disponible ? 'Disponible' : 'Oculto'}</span>
         </div>
-      </td>
-      <td data-label="Nombre">${escapeHtml(p.nombre)}</td>
-      <td data-label="Categoría">${escapeHtml(p.categoria || '—')}</td>
-      <td data-label="Precio">$${Number(p.precio || 0).toFixed(2)}</td>
-      <td class="pack-included" data-label="Incluye">${caracteristicasHtml}</td>
-      <td data-label="Estado">${p.disponible !== false ? `<span class="pill pill-yes">Disponible</span>` : `<span class="pill pill-no">Oculto</span>`}</td>
-      <td data-label="Acciones">
-        <div class="row-actions">
-          <button class="icon-btn" title="Editar" data-edit="${p.id}">✎</button>
-          <button class="icon-btn" title="Eliminar" data-del="${p.id}">🗑</button>
+        ${p.descripcion ? `<p class="pack-card-desc">${escapeHtml(p.descripcion)}</p>` : ''}
+        <div class="pack-card-price">
+          ${p.oferta && descuento > 0
+            ? `<span class="price-old">$${precio.toFixed(2)}</span><span class="price-final price-final-oferta">$${precioFinal.toFixed(2)}</span>`
+            : `<span class="price-final">$${precio.toFixed(2)}</span>`}
         </div>
-      </td>`;
-    tbody.appendChild(tr);
-    const thumbImg = tr.querySelector('img.thumb');
-    const thumbLabel = tr.querySelector('.thumb-label');
+        ${caracteristicasHtml}
+        <div class="pack-card-actions">
+          <button class="btn btn-ghost btn-small" data-edit="${p.id}"><i class="fa-solid fa-pen"></i> Editar</button>
+          <button class="btn btn-danger btn-small" data-del="${p.id}"><i class="fa-solid fa-trash"></i> Eliminar</button>
+        </div>
+      </div>`;
+    grid.appendChild(card);
+
+    const thumbImg = card.querySelector('img.pack-thumb');
+    const thumbLabel = card.querySelector('.image-meta');
     if (thumbImg && thumbLabel) {
       const updateMeta = () => setImageMetaInfo(thumbImg, thumbLabel);
       thumbImg.addEventListener('load', updateMeta);
@@ -963,21 +1209,31 @@ function renderPacks(){
         updateMeta();
       }
     }
-    const packDetailBtn = tr.querySelector('[data-pack-img-detail]');
+    const packDetailBtn = card.querySelector('[data-pack-img-detail]');
     if (packDetailBtn) {
       packDetailBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        showImageDetail((p.imagenes || [])[0] || p.imagen, 'packs');
+        const packSources = (p.imagenes && p.imagenes.length) ? p.imagenes : (p.imagen ? [p.imagen] : []);
+        showImageDetail(packSources, 'packs', 0);
       });
     }
   });
 
-  tbody.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openPackModal(b.dataset.edit)));
-  tbody.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => deletePack(b.dataset.del)));
+  grid.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openPackModal(b.dataset.edit)));
+  grid.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => deletePack(b.dataset.del)));
+  requestAnimationFrame(() => updateSegTabsFade(document.getElementById('pack-tabs')));
 }
 
 document.getElementById('pack-search').addEventListener('input', renderPacks);
 document.getElementById('pack-new').addEventListener('click', () => openPackModal(null));
+
+document.querySelectorAll('#pack-tabs [data-ptab]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    state.packTab = btn.dataset.ptab;
+    document.querySelectorAll('#pack-tabs [data-ptab]').forEach(b => b.classList.toggle('active', b === btn));
+    renderPacks();
+  });
+});
 
 function openPackModal(id){
   const p = id ? state.packs.find(x => x.id === id) : null;
@@ -1560,25 +1816,13 @@ function renderPedidoDetalleBody(){
         <button class="btn btn-ghost btn-small" id="pedido-agregar-producto-btn" ${state.productos.length ? '' : 'disabled'}>+ Agregar producto</button>
       </div>
       ${!state.productos.length ? `<p class="hint err">No se pudo cargar el inventario para editar productos.</p>` : ''}
-      <table>
+      <table class="pedido-edit-table">
         <thead><tr><th>Producto</th><th>Cant.</th><th>Precio unit.</th><th>Subtotal</th><th></th></tr></thead>
-        <tbody>
-          ${pedidoDetalleComprasEdit.map((c, idx) => `
-            <tr data-row="${idx}">
-              <td>
-                <select class="pedido-edit-select" data-idx="${idx}">
-                  ${state.productos.map(prod => `<option value="${escapeHtml(String(prod.id))}" ${String(prod.id) === String(c.id) ? 'selected' : ''}>${escapeHtml(prod.nombre)}</option>`).join('')}
-                </select>
-              </td>
-              <td><input type="number" min="1" step="1" class="pedido-edit-qty" data-idx="${idx}" value="${Number(c.quantity) || 1}"></td>
-              <td><input type="number" min="0" step="0.01" class="pedido-edit-price" data-idx="${idx}" value="${Number(c.unitPrice) || 0}"></td>
-              <td>$${((Number(c.unitPrice) || 0) * (Number(c.quantity) || 0)).toFixed(2)}</td>
-              <td><button class="icon-btn" title="Quitar producto" data-remove-row="${idx}">🗑</button></td>
-            </tr>
-          `).join('') || `<tr><td colspan="5" class="hint">Sin productos. Usa "Agregar producto" para añadir uno.</td></tr>`}
+        <tbody id="pedido-edit-tbody">
+          ${pedidoDetalleComprasEdit.map((c, idx) => filaEdicionPedidoHtml(c, idx)).join('') || `<tr><td colspan="5" class="hint">Sin productos. Usa "Agregar producto" para añadir uno.</td></tr>`}
         </tbody>
       </table>
-      <div class="compras-edit-total">Total: <strong>$${totalEdit.toFixed(2)}</strong></div>
+      <div class="compras-edit-total">Total: <strong id="pedido-edit-total">$${totalEdit.toFixed(2)}</strong></div>
       <div class="compras-edit-actions">
         <button class="btn btn-ghost btn-small" id="pedido-cancelar-edicion-btn">Cancelar</button>
         <button class="btn btn-primary btn-small" id="pedido-guardar-edicion-btn">Guardar cambios</button>
@@ -1593,38 +1837,151 @@ function renderPedidoDetalleBody(){
   });
   document.getElementById('pedido-guardar-edicion-btn')?.addEventListener('click', guardarEdicionComprasPedido);
 
-  body.querySelectorAll('.pedido-edit-select').forEach(sel => sel.addEventListener('change', (e) => {
-    const idx = Number(e.target.dataset.idx);
-    const prod = state.productos.find(x => String(x.id) === String(e.target.value));
-    if (!prod) return;
-    pedidoDetalleComprasEdit[idx] = {
-      ...pedidoDetalleComprasEdit[idx],
-      id: prod.id,
-      name: prod.nombre,
-      unitPrice: Number(prod.precio) || 0
+  bindFilaEdicionPedidoEventos();
+}
+
+function filaEdicionPedidoHtml(c, idx){
+  const subtotal = (Number(c.unitPrice) || 0) * (Number(c.quantity) || 0);
+  return `
+    <tr data-row="${idx}">
+      <td data-label="Producto">
+        <div class="autocomplete-wrap" data-idx="${idx}">
+          <input type="text" class="pedido-edit-product-input" data-idx="${idx}" value="${escapeHtml(c.name || '')}" placeholder="Buscar producto..." autocomplete="off" autocapitalize="off" spellcheck="false">
+          <div class="autocomplete-list" data-idx="${idx}" hidden></div>
+        </div>
+      </td>
+      <td data-label="Cantidad"><input type="number" min="1" step="1" inputmode="numeric" class="pedido-edit-qty" data-idx="${idx}" value="${Number(c.quantity) || 1}"></td>
+      <td data-label="Precio unit."><input type="number" min="0" step="0.01" inputmode="decimal" class="pedido-edit-price" data-idx="${idx}" value="${Number(c.unitPrice) || 0}"></td>
+      <td class="pedido-edit-subtotal" data-idx="${idx}" data-label="Subtotal">$${subtotal.toFixed(2)}</td>
+      <td data-label=""><button type="button" class="icon-btn" title="Quitar producto" data-remove-row="${idx}"><i class="fa-solid fa-trash-can"></i></button></td>
+    </tr>`;
+}
+
+function actualizarFilaEdicionPedido(idx){
+  const c = pedidoDetalleComprasEdit[idx];
+  if (!c) return;
+  const subtotal = (Number(c.unitPrice) || 0) * (Number(c.quantity) || 0);
+  const celda = document.querySelector(`.pedido-edit-subtotal[data-idx="${idx}"]`);
+  if (celda) celda.textContent = `$${subtotal.toFixed(2)}`;
+  const totalEl = document.getElementById('pedido-edit-total');
+  if (totalEl) totalEl.textContent = `$${totalComprasEdit().toFixed(2)}`;
+}
+
+function bindFilaEdicionPedidoEventos(){
+  const body = document.getElementById('pedido-detalle-body');
+  if (!body) return;
+
+  body.querySelectorAll('.pedido-edit-qty').forEach(inp => {
+    inp.addEventListener('input', (e) => {
+      const idx = Number(e.target.dataset.idx);
+      pedidoDetalleComprasEdit[idx].quantity = Math.max(1, Math.floor(Number(e.target.value) || 1));
+      actualizarFilaEdicionPedido(idx);
+    });
+  });
+
+  body.querySelectorAll('.pedido-edit-price').forEach(inp => {
+    inp.addEventListener('input', (e) => {
+      const idx = Number(e.target.dataset.idx);
+      pedidoDetalleComprasEdit[idx].unitPrice = Math.max(0, Number(e.target.value) || 0);
+      actualizarFilaEdicionPedido(idx);
+    });
+  });
+
+  body.querySelectorAll('[data-remove-row]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const idx = Number(e.currentTarget.dataset.removeRow);
+      pedidoDetalleComprasEdit.splice(idx, 1);
+      renderPedidoDetalleBody();
+    });
+  });
+
+  body.querySelectorAll('.pedido-edit-product-input').forEach(inp => {
+    const idx = Number(inp.dataset.idx);
+    const lista = body.querySelector(`.autocomplete-list[data-idx="${idx}"]`);
+    if (!lista) return;
+
+    const mostrarSugerencias = () => {
+      const query = normalizeText(inp.value.trim());
+      const productos = query
+        ? state.productos.filter(p => normalizeText(p.nombre).includes(query))
+        : state.productos;
+      const top = productos.slice(0, 8);
+      if (!top.length){
+        lista.innerHTML = `<div class="autocomplete-empty">Sin coincidencias</div>`;
+      } else {
+        lista.innerHTML = top.map((p, i) => `
+          <button type="button" class="autocomplete-item${i === 0 ? ' active' : ''}" data-idx="${idx}" data-prod-id="${escapeHtml(String(p.id))}">
+            <span class="autocomplete-item-name">${escapeHtml(p.nombre)}</span>
+            <span class="autocomplete-item-price">$${Number(p.precio || 0).toFixed(2)}</span>
+          </button>`).join('');
+      }
+      lista.hidden = false;
     };
-    renderPedidoDetalleBody();
-  }));
-  body.querySelectorAll('.pedido-edit-qty').forEach(inp => inp.addEventListener('input', (e) => {
-    const idx = Number(e.target.dataset.idx);
-    pedidoDetalleComprasEdit[idx].quantity = Math.max(1, Math.floor(Number(e.target.value) || 1));
-    renderPedidoDetalleBody();
-  }));
-  body.querySelectorAll('.pedido-edit-price').forEach(inp => inp.addEventListener('input', (e) => {
-    const idx = Number(e.target.dataset.idx);
-    pedidoDetalleComprasEdit[idx].unitPrice = Math.max(0, Number(e.target.value) || 0);
-    renderPedidoDetalleBody();
-  }));
-  body.querySelectorAll('[data-remove-row]').forEach(btn => btn.addEventListener('click', (e) => {
-    const idx = Number(e.target.dataset.removeRow);
-    pedidoDetalleComprasEdit.splice(idx, 1);
-    renderPedidoDetalleBody();
-  }));
+
+    const elegirProducto = (prodId) => {
+      const prod = state.productos.find(p => String(p.id) === String(prodId));
+      if (!prod) return;
+      pedidoDetalleComprasEdit[idx] = {
+        ...pedidoDetalleComprasEdit[idx],
+        id: prod.id,
+        name: prod.nombre,
+        unitPrice: Number(prod.precio) || 0
+      };
+      inp.value = prod.nombre;
+      const precioInput = body.querySelector(`.pedido-edit-price[data-idx="${idx}"]`);
+      if (precioInput) precioInput.value = Number(prod.precio) || 0;
+      actualizarFilaEdicionPedido(idx);
+      lista.hidden = true;
+      lista.innerHTML = '';
+    };
+
+    inp.addEventListener('focus', mostrarSugerencias);
+    inp.addEventListener('input', mostrarSugerencias);
+
+    inp.addEventListener('keydown', (e) => {
+      const items = Array.from(lista.querySelectorAll('.autocomplete-item'));
+      if (!items.length) return;
+      let activeIdx = items.findIndex(it => it.classList.contains('active'));
+      if (e.key === 'ArrowDown'){
+        e.preventDefault();
+        activeIdx = (activeIdx + 1) % items.length;
+        items.forEach(it => it.classList.remove('active'));
+        items[activeIdx].classList.add('active');
+      } else if (e.key === 'ArrowUp'){
+        e.preventDefault();
+        activeIdx = (activeIdx - 1 + items.length) % items.length;
+        items.forEach(it => it.classList.remove('active'));
+        items[activeIdx].classList.add('active');
+      } else if (e.key === 'Enter'){
+        e.preventDefault();
+        const activo = items[activeIdx] || items[0];
+        if (activo) elegirProducto(activo.dataset.prodId);
+      } else if (e.key === 'Escape'){
+        lista.hidden = true;
+      }
+    });
+
+    inp.addEventListener('blur', () => {
+      setTimeout(() => { lista.hidden = true; lista.innerHTML = ''; }, 150);
+    });
+
+    lista.querySelectorAll('.autocomplete-item').forEach(btn => {
+      btn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        elegirProducto(btn.dataset.prodId);
+      });
+    });
+
+    lista.addEventListener('mousedown', (e) => {
+      const btn = e.target.closest('.autocomplete-item');
+      if (btn) { e.preventDefault(); elegirProducto(btn.dataset.prodId); }
+    });
+  });
 }
 
 async function iniciarEdicionComprasPedido(){
   if (!state.productos.length){
-    try{ await loadProductos(); }catch(e){ /* loadProductos ya muestra el toast de error */ }
+    try{ await loadProductos(); }catch(e){ showToast('No se pudo cargar el inventario: ' + e.message, true); }
   }
   const compras = Array.isArray(pedidoDetalleActual.compras) ? pedidoDetalleActual.compras : [];
   pedidoDetalleComprasEdit = compras.map(c => ({
@@ -1638,19 +1995,21 @@ async function iniciarEdicionComprasPedido(){
 }
 
 function agregarProductoAEdicionPedido(){
-  const primero = state.productos[0];
-  if (!primero) return;
-  pedidoDetalleComprasEdit.push({
-    id: primero.id,
-    name: primero.nombre,
-    unitPrice: Number(primero.precio) || 0,
-    quantity: 1
-  });
+  pedidoDetalleComprasEdit.push({ id: null, name: '', unitPrice: 0, quantity: 1 });
   renderPedidoDetalleBody();
+  const tbody = document.getElementById('pedido-edit-tbody');
+  const filas = tbody ? tbody.querySelectorAll('.pedido-edit-product-input') : [];
+  const ultimo = filas[filas.length - 1];
+  if (ultimo) ultimo.focus();
 }
 
 async function guardarEdicionComprasPedido(){
   try{
+    const sinProducto = pedidoDetalleComprasEdit.some(c => !c.id || !c.name);
+    if (sinProducto){
+      showToast('Selecciona un producto de la lista para cada fila antes de guardar.', true);
+      return;
+    }
     const compras = pedidoDetalleComprasEdit
       .filter(c => (Number(c.quantity) || 0) > 0)
       .map(c => ({ id: c.id, name: c.name, unitPrice: Number(c.unitPrice) || 0, quantity: Number(c.quantity) || 0 }));
@@ -2070,6 +2429,7 @@ function unlockApp(){
   state.authenticated = true;
   const appEl = document.querySelector('.app');
   if (appEl) appEl.classList.remove('locked');
+  requestAnimationFrame(refreshAllSegTabsFade);
 }
 
 function showBackendGate(){
@@ -2439,6 +2799,330 @@ function renderVentasMesChart(pedidos){
   }
 }
 
+const nodeChartRenderers = new Map();
+let nodeChartResizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(nodeChartResizeTimer);
+  nodeChartResizeTimer = setTimeout(() => { nodeChartRenderers.forEach(fn => fn()); }, 200);
+});
+function registrarNodeChart(id, fn){
+  nodeChartRenderers.set(id, fn);
+  fn();
+}
+
+function truncarTexto(str, max){
+  const s = String(str || '');
+  return s.length > max ? s.slice(0, max - 1) + '…' : s;
+}
+
+function obtenerTooltipNodo(el){
+  let tooltip = el.querySelector('.node-tooltip');
+  if (!tooltip){
+    tooltip = document.createElement('div');
+    tooltip.className = 'node-tooltip';
+    el.appendChild(tooltip);
+  }
+  return tooltip;
+}
+
+function initNodeChartInteractivity(el){
+  const svg = el.querySelector('svg');
+  if (!svg) return;
+  const tooltip = obtenerTooltipNodo(el);
+  const nodos = Array.from(svg.querySelectorAll('.flow-node[data-node-id]'));
+  const enlaces = Array.from(svg.querySelectorAll('.flow-link[data-from]'));
+  const grupoEnlaces = svg.querySelector('.flow-links');
+
+  function limpiarEstado(){
+    svg.classList.remove('chart-hovering');
+    if (grupoEnlaces) grupoEnlaces.classList.remove('has-active');
+    nodos.forEach(n => n.classList.remove('is-active'));
+    enlaces.forEach(l => l.classList.remove('flow-link-active'));
+    tooltip.classList.remove('visible');
+  }
+
+  function activarNodo(nodeId){
+    svg.classList.add('chart-hovering');
+    if (grupoEnlaces) grupoEnlaces.classList.add('has-active');
+    nodos.forEach(n => n.classList.toggle('is-active', n.dataset.nodeId === nodeId));
+    enlaces.forEach(l => {
+      const activo = l.dataset.from === nodeId || l.dataset.to === nodeId;
+      l.classList.toggle('flow-link-active', activo);
+      if (activo){
+        const otroId = l.dataset.from === nodeId ? l.dataset.to : l.dataset.from;
+        const otroNodo = nodos.find(n => n.dataset.nodeId === otroId);
+        if (otroNodo) otroNodo.classList.add('is-active');
+      }
+    });
+  }
+
+  function ubicarTooltip(clientX, clientY){
+    const rect = el.getBoundingClientRect();
+    let x = clientX - rect.left + 16;
+    let y = clientY - rect.top - 14;
+    const tw = tooltip.offsetWidth || 140;
+    const th = tooltip.offsetHeight || 50;
+    if (x + tw > rect.width) x = clientX - rect.left - tw - 16;
+    if (y < 4) y = clientY - rect.top + 20;
+    if (y + th > rect.height) y = Math.max(4, rect.height - th - 6);
+    tooltip.style.left = `${Math.max(4, x)}px`;
+    tooltip.style.top = `${Math.max(4, y)}px`;
+  }
+
+  function mostrarTooltip(node, clientX, clientY){
+    const titulo = node.dataset.ttTitle || '';
+    const valor = node.dataset.ttValue || '';
+    const extra = node.dataset.ttExtra || '';
+    tooltip.innerHTML = `<div class="node-tooltip-title">${escapeHtml(titulo)}</div><div class="node-tooltip-value">${escapeHtml(valor)}</div>${extra ? `<div class="node-tooltip-extra">${escapeHtml(extra)}</div>` : ''}`;
+    tooltip.classList.add('visible');
+    ubicarTooltip(clientX, clientY);
+  }
+
+  nodos.forEach(node => {
+    const hit = node.querySelector('.flow-node-hit') || node;
+    hit.addEventListener('mouseenter', (e) => { activarNodo(node.dataset.nodeId); mostrarTooltip(node, e.clientX, e.clientY); });
+    hit.addEventListener('mousemove', (e) => { ubicarTooltip(e.clientX, e.clientY); });
+    hit.addEventListener('mouseleave', limpiarEstado);
+    hit.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const t = e.touches[0];
+      activarNodo(node.dataset.nodeId);
+      mostrarTooltip(node, t.clientX, t.clientY);
+    }, { passive: false });
+  });
+
+  el.addEventListener('touchend', () => { setTimeout(limpiarEstado, 1400); }, { passive: true });
+}
+
+function nodoSvg(clase, id, x, y, r, rHit, ttTitle, ttValor, ttExtra, contenidoHtml, delay){
+  return `
+    <g class="flow-node ${clase}" data-node-id="${id}" data-tt-title="${escapeHtml(ttTitle)}" data-tt-value="${escapeHtml(ttValor)}" data-tt-extra="${escapeHtml(ttExtra || '')}" style="animation-delay:${delay.toFixed(2)}s">
+      ${contenidoHtml}
+      <circle class="flow-node-hit" cx="${x}" cy="${y}" r="${rHit}"></circle>
+    </g>`;
+}
+function curvaHorizontal(a, b){
+  const mx = Math.round((a.x + b.x) / 2);
+  return `M ${a.x} ${a.y} C ${mx} ${a.y}, ${mx} ${b.y}, ${b.x} ${b.y}`;
+}
+function curvaVertical(a, b){
+  const my = Math.round((a.y + b.y) / 2);
+  return `M ${a.x} ${a.y} C ${a.x} ${my}, ${b.x} ${my}, ${b.x} ${b.y}`;
+}
+
+function renderFlowChart(origenesOrdenadosFull, totalVisitas, totalPedidos, ventasTotal){
+  const el = document.getElementById('resu-flow-chart');
+  if (!el) return;
+
+  const top = origenesOrdenadosFull.slice(0, 5);
+  const restoCount = origenesOrdenadosFull.slice(5).reduce((acc, [, v]) => acc + v, 0);
+  const origenes = restoCount > 0 ? [...top, ['Otros', restoCount]] : top;
+
+  if (!origenes.length || !totalVisitas){
+    el.innerHTML = `<div class="chart-empty">Todavía no hay datos suficientes para mostrar el flujo.</div>`;
+    return;
+  }
+
+  const contW = Math.round(el.clientWidth || el.getBoundingClientRect().width || (window.innerWidth - 60));
+  const compacto = contW < 640;
+  // Calcula longitud máxima de etiqueta según ancho y cantidad de orígenes.
+  const labelMaxLen = compacto ? 8 : (contW < 900 ? 12 : 16);
+  const showOriginLabels = !compacto || origenes.length <= 5;
+  const maxOrigen = Math.max(...origenes.map(([, v]) => v));
+  const nodoVisitas = { label: 'Visitas', valor: String(totalVisitas) };
+  const nodoPedidos = { label: 'Pedidos', valor: String(totalPedidos) };
+  const nodoFinal = { label: 'Ventas', valor: `$${ventasTotal.toFixed(2)}` };
+
+  el.innerHTML = compacto
+    ? flowChartVertical(origenes, maxOrigen, nodoVisitas, nodoPedidos, nodoFinal, contW, labelMaxLen, showOriginLabels)
+    : flowChartHorizontal(origenes, maxOrigen, nodoVisitas, nodoPedidos, nodoFinal, contW, labelMaxLen, showOriginLabels);
+  initNodeChartInteractivity(el);
+}
+
+function flowChartHorizontal(origenes, maxOrigen, nodoVisitas, nodoPedidos, nodoFinal, contW, labelMaxLen = 16, showOriginLabels = true){
+  const width = Math.max(640, contW);
+  const height = Math.max(230, origenes.length * 46 + 60);
+  const xOrigen = 14;
+  const xVisitas = Math.round(width * 0.4);
+  const xPedidos = Math.round(width * 0.68);
+  const xFinal = width - 90;
+  const cy = height / 2;
+  const step = height / (origenes.length + 1);
+
+  const totalVisitas = Number(nodoVisitas.valor) || 0;
+  const totalPedidos = Number(nodoPedidos.valor) || 0;
+  const ventasNum = Number(String(nodoFinal.valor).replace(/[^0-9.-]/g, '')) || 0;
+  const conversion = totalVisitas ? ((totalPedidos / totalVisitas) * 100).toFixed(1) : '0';
+  const ticket = totalPedidos ? (ventasNum / totalPedidos).toFixed(2) : '0.00';
+
+  const nodosOrigen = origenes.map(([nombre, valor], i) => ({
+    nombre: truncarTexto(nombre, labelMaxLen), valor, x: xOrigen, y: Math.round(step * (i + 1)),
+    r: Math.round(5 + (valor / maxOrigen) * 9)
+  }));
+  const vis = { x: xVisitas, y: cy, r: 24, ...nodoVisitas };
+  const ped = { x: xPedidos, y: cy, r: 24, ...nodoPedidos };
+  const fin = { x: xFinal, y: cy, r: 26, ...nodoFinal };
+
+  const linksOrigen = nodosOrigen.map((n, i) => {
+    const grosor = (1.4 + (n.valor / maxOrigen) * 3.6).toFixed(1);
+    return `<path class="flow-link" data-from="o${i}" data-to="vis" d="${curvaHorizontal(n, vis)}" stroke-width="${grosor}" style="animation-delay:${(i * 0.12).toFixed(2)}s"></path>`;
+  }).join('');
+  const linkVisPed = `<path class="flow-link flow-link-main" data-from="vis" data-to="ped" d="${curvaHorizontal(vis, ped)}" stroke-width="5"></path>`;
+  const linkPedFin = `<path class="flow-link flow-link-main" data-from="ped" data-to="fin" d="${curvaHorizontal(ped, fin)}" stroke-width="5"></path>`;
+
+  const origenNodosHtml = nodosOrigen.map((n, i) => {
+    const pct = totalVisitas ? ((n.valor / totalVisitas) * 100).toFixed(1) : '0';
+    const labelText = showOriginLabels ? `<text x="${n.x + n.r + 9}" y="${n.y - 4}" class="flow-node-label" text-anchor="start">${escapeHtml(n.nombre)}</text>` : '';
+    const contenido = `
+      <circle cx="${n.x}" cy="${n.y}" r="${n.r}"></circle>
+      ${labelText}
+      <text x="${n.x + n.r + 9}" y="${n.y + 13}" class="flow-node-value" text-anchor="start">${n.valor} visita${n.valor === 1 ? '' : 's'}</text>`;
+    return nodoSvg('flow-node-origin', `o${i}`, n.x, n.y, n.r, Math.max(n.r + 16, 28), n.nombre, `${n.valor} visita${n.valor === 1 ? '' : 's'}`, `${pct}% del total`, contenido, i * 0.08);
+  }).join('');
+
+  const central = (n, clase, id, extra, delay) => {
+    const contenido = `
+      <circle cx="${n.x}" cy="${n.y}" r="${n.r}"></circle>
+      <text x="${n.x}" y="${n.y - n.r - 10}" class="flow-node-label" text-anchor="middle">${escapeHtml(n.label)}</text>
+      <text x="${n.x}" y="${n.y + 5}" class="flow-node-value" text-anchor="middle">${escapeHtml(n.valor)}</text>`;
+    return nodoSvg(clase, id, n.x, n.y, n.r, n.r + 16, n.label, n.valor, extra, contenido, delay);
+  };
+
+  return `
+    <svg viewBox="0 0 ${width} ${height}" class="flow-svg" preserveAspectRatio="xMidYMid meet">
+      <g class="flow-links">${linksOrigen}${linkVisPed}${linkPedFin}</g>
+      ${origenNodosHtml}
+      ${central(vis, 'flow-node-mid', 'vis', 'Total de tráfico registrado', nodosOrigen.length * 0.08)}
+      ${central(ped, 'flow-node-mid', 'ped', `${conversion}% de conversión`, nodosOrigen.length * 0.08 + 0.1)}
+      ${central(fin, 'flow-node-final', 'fin', `Ticket promedio $${ticket}`, nodosOrigen.length * 0.08 + 0.2)}
+    </svg>`;
+}
+
+function flowChartVertical(origenes, maxOrigen, nodoVisitas, nodoPedidos, nodoFinal, contW, labelMaxLen = 10, showOriginLabels = true){
+  const width = Math.max(260, contW);
+  const cx = Math.round(width / 2);
+  const origenRowY = 34;
+  const stepOrigen = width / (origenes.length + 1);
+  const yVisitas = 130, yPedidos = 220, yFinal = 312;
+  const height = yFinal + 46;
+
+  const totalVisitas = Number(nodoVisitas.valor) || 0;
+  const totalPedidos = Number(nodoPedidos.valor) || 0;
+  const ventasNum = Number(String(nodoFinal.valor).replace(/[^0-9.-]/g, '')) || 0;
+  const conversion = totalVisitas ? ((totalPedidos / totalVisitas) * 100).toFixed(1) : '0';
+  const ticket = totalPedidos ? (ventasNum / totalPedidos).toFixed(2) : '0.00';
+
+  const nodosOrigen = origenes.map(([nombre, valor], i) => ({
+    nombre: truncarTexto(nombre, Math.max(6, Math.floor(labelMaxLen * 0.7))), valor, y: origenRowY, x: Math.round(stepOrigen * (i + 1)),
+    r: Math.round(5 + (valor / maxOrigen) * 8)
+  }));
+  const vis = { x: cx, y: yVisitas, r: 26, ...nodoVisitas };
+  const ped = { x: cx, y: yPedidos, r: 26, ...nodoPedidos };
+  const fin = { x: cx, y: yFinal, r: 28, ...nodoFinal };
+
+  const linksOrigen = nodosOrigen.map((n, i) => {
+    const grosor = (1.4 + (n.valor / maxOrigen) * 3.2).toFixed(1);
+    return `<path class="flow-link" data-from="o${i}" data-to="vis" d="${curvaVertical(n, vis)}" stroke-width="${grosor}" style="animation-delay:${(i * 0.12).toFixed(2)}s"></path>`;
+  }).join('');
+  const linkVisPed = `<path class="flow-link flow-link-main" data-from="vis" data-to="ped" d="${curvaVertical(vis, ped)}" stroke-width="5"></path>`;
+  const linkPedFin = `<path class="flow-link flow-link-main" data-from="ped" data-to="fin" d="${curvaVertical(ped, fin)}" stroke-width="5"></path>`;
+
+  const origenNodosHtml = nodosOrigen.map((n, i) => {
+    const pct = totalVisitas ? ((n.valor / totalVisitas) * 100).toFixed(1) : '0';
+    const labelText = showOriginLabels ? `<text x="${n.x}" y="${n.y - n.r - 7}" class="flow-node-label" text-anchor="middle">${escapeHtml(n.nombre)}</text>` : '';
+    const contenido = `
+      <circle cx="${n.x}" cy="${n.y}" r="${n.r}"></circle>
+      ${labelText}
+      <text x="${n.x}" y="${n.y + n.r + 15}" class="flow-node-value" text-anchor="middle">${n.valor}</text>`;
+    return nodoSvg('flow-node-origin', `o${i}`, n.x, n.y, n.r, Math.max(n.r + 14, 26), n.nombre, `${n.valor} visita${n.valor === 1 ? '' : 's'}`, `${pct}% del total`, contenido, i * 0.08);
+  }).join('');
+
+  const central = (n, clase, id, extra, delay) => {
+    const contenido = `
+      <circle cx="${n.x}" cy="${n.y}" r="${n.r}"></circle>
+      <text x="${n.x + n.r + 12}" y="${n.y - 4}" class="flow-node-label" text-anchor="start">${escapeHtml(n.label)}</text>
+      <text x="${n.x + n.r + 12}" y="${n.y + 14}" class="flow-node-value" text-anchor="start">${escapeHtml(n.valor)}</text>`;
+    return nodoSvg(clase, id, n.x, n.y, n.r, n.r + 16, n.label, n.valor, extra, contenido, delay);
+  };
+
+  return `
+    <svg viewBox="0 0 ${width} ${height}" class="flow-svg flow-svg-vertical" preserveAspectRatio="xMidYMid meet">
+      <g class="flow-links">${linksOrigen}${linkVisPed}${linkPedFin}</g>
+      ${origenNodosHtml}
+      ${central(vis, 'flow-node-mid', 'vis', 'Total de tráfico registrado', nodosOrigen.length * 0.08)}
+      ${central(ped, 'flow-node-mid', 'ped', `${conversion}% de conversión`, nodosOrigen.length * 0.08 + 0.1)}
+      ${central(fin, 'flow-node-final', 'fin', `Ticket promedio $${ticket}`, nodosOrigen.length * 0.08 + 0.2)}
+    </svg>`;
+}
+
+function renderNodeChainChart(containerId, nodos, opciones = {}){
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const datos = nodos.filter(n => n && Number.isFinite(Number(n.value)));
+  if (!datos.length){
+    el.innerHTML = `<div class="chart-empty">${opciones.emptyText || 'Sin datos suficientes.'}</div>`;
+    return;
+  }
+  const contW = Math.round(el.clientWidth || el.getBoundingClientRect().width || (window.innerWidth - 60));
+  const compacto = contW < 480;
+  const max = Math.max(...datos.map(n => Number(n.value) || 0), 1);
+  el.innerHTML = compacto ? nodeChainVertical(datos, max, contW) : nodeChainHorizontal(datos, max, contW);
+  initNodeChartInteractivity(el);
+}
+
+function nodeChainHorizontal(datos, max, contW){
+  const width = Math.max(420, contW);
+  const height = 150;
+  const cy = Math.round(height / 2 + 6);
+  const margin = 70;
+  const stepX = datos.length > 1 ? (width - margin * 2) / (datos.length - 1) : 0;
+  const total = datos.reduce((acc, n) => acc + (Number(n.value) || 0), 0);
+  const nodos = datos.map((n, i) => ({
+    ...n, x: Math.round(margin + stepX * i), y: cy,
+    r: Math.round(20 + (Number(n.value) / max) * 15)
+  }));
+  const links = nodos.slice(0, -1).map((n, i) => {
+    const b = nodos[i + 1];
+    const grosor = (2 + (Math.min(n.value, b.value) / max) * 3.6).toFixed(1);
+    return `<path class="flow-link flow-link-chain" data-from="c${i}" data-to="c${i + 1}" d="${curvaHorizontal(n, b)}" stroke="${n.color || 'var(--teal)'}" stroke-width="${grosor}" style="animation-delay:${(i * 0.15).toFixed(2)}s"></path>`;
+  }).join('');
+  const nodosHtml = nodos.map((n, i) => {
+    const pct = total ? (((Number(n.value) || 0) / total) * 100).toFixed(1) : '0';
+    const contenido = `
+      <circle cx="${n.x}" cy="${n.y}" r="${n.r}" style="fill:${n.bg || 'rgba(91,141,239,.16)'}; stroke:${n.color || 'var(--blue)'};"></circle>
+      <text x="${n.x}" y="${n.y - n.r - 10}" class="flow-node-label" text-anchor="middle">${escapeHtml(n.label)}</text>
+      <text x="${n.x}" y="${n.y + 5}" class="flow-node-value" text-anchor="middle">${escapeHtml(n.display ?? String(n.value))}</text>`;
+    return nodoSvg('flow-node-chain', `c${i}`, n.x, n.y, n.r, n.r + 16, n.label, n.display ?? String(n.value), `${pct}% del total`, contenido, i * 0.1);
+  }).join('');
+  return `<svg viewBox="0 0 ${width} ${height}" class="flow-svg" preserveAspectRatio="xMidYMid meet"><g class="flow-links">${links}</g>${nodosHtml}</svg>`;
+}
+
+function nodeChainVertical(datos, max, contW){
+  const width = Math.max(220, contW);
+  const cx = Math.round(width / 2);
+  const stepY = 92;
+  const height = stepY * (datos.length - 1) + 100;
+  const total = datos.reduce((acc, n) => acc + (Number(n.value) || 0), 0);
+  const nodos = datos.map((n, i) => ({
+    ...n, x: cx, y: Math.round(56 + stepY * i),
+    r: Math.round(22 + (Number(n.value) / max) * 13)
+  }));
+  const links = nodos.slice(0, -1).map((n, i) => {
+    const b = nodos[i + 1];
+    const grosor = (2 + (Math.min(n.value, b.value) / max) * 3.6).toFixed(1);
+    return `<path class="flow-link flow-link-chain" data-from="c${i}" data-to="c${i + 1}" d="${curvaVertical(n, b)}" stroke="${n.color || 'var(--teal)'}" stroke-width="${grosor}" style="animation-delay:${(i * 0.15).toFixed(2)}s"></path>`;
+  }).join('');
+  const nodosHtml = nodos.map((n, i) => {
+    const pct = total ? (((Number(n.value) || 0) / total) * 100).toFixed(1) : '0';
+    const contenido = `
+      <circle cx="${n.x}" cy="${n.y}" r="${n.r}" style="fill:${n.bg || 'rgba(91,141,239,.16)'}; stroke:${n.color || 'var(--blue)'};"></circle>
+      <text x="${n.x + n.r + 12}" y="${n.y - 3}" class="flow-node-label" text-anchor="start">${escapeHtml(n.label)}</text>
+      <text x="${n.x + n.r + 12}" y="${n.y + 15}" class="flow-node-value" text-anchor="start">${escapeHtml(n.display ?? String(n.value))}</text>`;
+    return nodoSvg('flow-node-chain', `c${i}`, n.x, n.y, n.r, n.r + 14, n.label, n.display ?? String(n.value), `${pct}% del total`, contenido, i * 0.1);
+  }).join('');
+  return `<svg viewBox="0 0 ${width} ${height}" class="flow-svg flow-svg-vertical" preserveAspectRatio="xMidYMid meet"><g class="flow-links">${links}</g>${nodosHtml}</svg>`;
+}
+
 function renderHorasConexionChart(usuarios){
   const horas = Array.from({ length: 24 }, (_, h) => ({ hora: h, total: 0 }));
   for (let i = 0; i < usuarios.length; i++) {
@@ -2624,13 +3308,15 @@ async function loadResumen(){
       const key = u.origen || u.fuente_trafico || 'Desconocido';
       origenes[key] = (origenes[key] || 0) + 1;
     });
+    const origenesOrdenadosFull = Object.entries(origenes).sort((a, b) => b[1] - a[1]);
     const listaOrigenes = document.getElementById('resu-origenes');
     if (listaOrigenes){
-      const origenesOrdenados = Object.entries(origenes).sort((a, b) => b[1] - a[1]).slice(0, 6);
+      const origenesOrdenados = origenesOrdenadosFull.slice(0, 6);
       listaOrigenes.innerHTML = origenesOrdenados.length ? origenesOrdenados.map(([k, v]) => `
         <div class="mini-row"><span class="k">${escapeHtml(k)}</span><span class="v">${v}</span></div>`).join('') : `<p class="hint">Sin datos todavía.</p>`;
     }
 
+    registrarNodeChart('resu-flow-chart', () => renderFlowChart(origenesOrdenadosFull, usuarios.length, pedidosUnicos.length, ventasMes));
     renderVentasMesChart(delMes);
 
     /* ---------------- Productos más vendidos (del mes) ---------------- */
@@ -2668,6 +3354,21 @@ async function loadResumen(){
           <span class="v">${estado === 'sin' ? `<span class="pill pill-danger">Sin stock</span>` : `<span class="pill pill-warn">${p.stock} und.</span>`}</span>
         </div>`).join('') : `<p class="hint">Todo el inventario con control de stock está en buen nivel.</p>`;
     }
+
+    /* ---------------- Gráficas de nodos superiores ---------------- */
+    const completadosCount = asignados.length - seguimientoAbierto;
+    registrarNodeChart('resu-pipeline-chart', () => renderNodeChainChart('resu-pipeline-chart', [
+      { label: 'Nuevos', value: nuevosSinAsignar.length, display: String(nuevosSinAsignar.length), color: 'var(--blue)', bg: 'rgba(91,141,239,.16)' },
+      { label: 'En seguimiento', value: seguimientoAbierto, display: String(seguimientoAbierto), color: 'var(--teal)', bg: 'rgba(52,211,192,.16)' },
+      { label: 'Completados', value: completadosCount, display: String(completadosCount), color: 'var(--accent)', bg: 'rgba(228,46,46,.16)' }
+    ], { emptyText: 'Todavía no hay pedidos para mostrar el pipeline.' }));
+
+    const disponiblesCount = Math.max(0, state.productos.length - bajoCount - sinCount);
+    registrarNodeChart('resu-inventario-chart', () => renderNodeChainChart('resu-inventario-chart', [
+      { label: 'Disponible', value: disponiblesCount, display: String(disponiblesCount), color: 'var(--teal)', bg: 'rgba(52,211,192,.16)' },
+      { label: 'Stock bajo', value: bajoCount, display: String(bajoCount), color: '#f0ba54', bg: 'rgba(255,185,98,.16)' },
+      { label: 'Sin stock', value: sinCount, display: String(sinCount), color: 'var(--red)', bg: 'rgba(240,84,106,.16)' }
+    ], { emptyText: 'Todavía no hay productos en el inventario.' }));
 
     /* ---------------- Rango de fechas seleccionado ---------------- */
     const { desde, hasta, etiqueta } = calcularRangoFechas();
@@ -2753,7 +3454,11 @@ if (resumenBtn) resumenBtn.addEventListener('click', loadResumen);
   const topbarTitle = document.getElementById('topbar-title');
   if (topbarTitle){
     document.querySelectorAll('.nav-item').forEach(btn => {
-      btn.addEventListener('click', () => { topbarTitle.textContent = btn.textContent.trim(); });
+      btn.addEventListener('click', () => {
+        const clone = btn.cloneNode(true);
+        clone.querySelectorAll('.nav-badge').forEach(b => b.remove());
+        topbarTitle.textContent = clone.textContent.trim();
+      });
     });
   }
 })();

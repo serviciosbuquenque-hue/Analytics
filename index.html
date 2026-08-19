@@ -13,7 +13,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Analytics">
-<link rel="stylesheet" href="styles.css?v=3">
+<link rel="stylesheet" href="styles.css?v=7">
 </head>
 <body>
 
@@ -152,46 +152,67 @@
   <!-- Sidebar -->
   <aside class="sidebar" id="sidebar">
     <div class="brand">
-      <span class="brand-mark">▣</span>
-      <div>
-        <h1>Panel</h1>
-        <p>Gestión de tienda</p>
+      <span class="brand-mark"><i class="fa-solid fa-bowl-food"></i></span>
+      <div class="brand-text">
+        <h1>Buquenque</h1>
+        <p>Manager</p>
       </div>
     </div>
 
     <nav class="nav">
-      <button class="nav-item active" data-view="resumen">
-        <span class="nav-ico">◆</span> Resumen
-      </button>
-      <button class="nav-item" data-view="inventario">
-        <span class="nav-ico">📦</span> Inventario
-        <span class="nav-badge" id="badge-inventario">0</span>
-      </button>
-      <button class="nav-item" data-view="packs">
-        <span class="nav-ico">🎁</span> Packs
-      </button>
-      <button class="nav-item" data-view="pedidos">
-        <span class="nav-ico">🚚</span> Pedidos
-        <span class="nav-badge" id="badge-pedidos">0</span>
-      </button>
-      <button class="nav-item" data-view="usuarios">
-        <span class="nav-ico">👤</span> Registro de usuarios
-      </button>
-      <button class="nav-item" data-view="notificaciones">
-        <span class="nav-ico">🔔</span> Notificaciones
-      </button>
-      <button class="nav-item" data-view="config">
-        <span class="nav-ico">⚙️</span> Conexión
-      </button>
+      <div class="nav-section">
+        <span class="nav-section-label">General</span>
+        <button class="nav-item active" data-view="resumen">
+          <span class="nav-ico"><i class="fa-solid fa-chart-pie"></i></span> Resumen
+        </button>
+      </div>
+
+      <div class="nav-section">
+        <span class="nav-section-label">Gestión</span>
+        <button class="nav-item" data-view="inventario">
+          <span class="nav-ico"><i class="fa-solid fa-boxes-stacked"></i></span> Inventario
+          <span class="nav-badge" id="badge-inventario">0</span>
+        </button>
+        <button class="nav-item" data-view="packs">
+          <span class="nav-ico"><i class="fa-solid fa-gift"></i></span> Packs
+        </button>
+        <button class="nav-item" data-view="pedidos">
+          <span class="nav-ico"><i class="fa-solid fa-truck-fast"></i></span> Pedidos
+          <span class="nav-badge" id="badge-pedidos">0</span>
+        </button>
+      </div>
+
+      <div class="nav-section">
+        <span class="nav-section-label">Clientes</span>
+        <button class="nav-item" data-view="usuarios">
+          <span class="nav-ico"><i class="fa-solid fa-users"></i></span> Registro de usuarios
+        </button>
+        <button class="nav-item" data-view="notificaciones">
+          <span class="nav-ico"><i class="fa-solid fa-bell"></i></span> Notificaciones
+        </button>
+      </div>
+
+      <div class="nav-section">
+        <span class="nav-section-label">Sistema</span>
+        <button class="nav-item" data-view="config">
+          <span class="nav-ico"><i class="fa-solid fa-plug-circle-bolt"></i></span> Conexión
+        </button>
+      </div>
     </nav>
 
-    <div class="conn-status" id="connStatus">
-      <span class="dot"></span> <span id="connStatusText">Sin verificar</span>
-    </div>
+    <div class="sidebar-footer">
+      <div class="conn-status" id="connStatus">
+        <span class="conn-status-icon"><span class="dot"></span></span>
+        <div class="conn-status-text">
+          <span class="conn-status-title">Backend</span>
+          <span id="connStatusText">Sin verificar</span>
+        </div>
+      </div>
 
-    <button type="button" id="logout-btn" class="nav-item" style="margin-top:8px; width:100%; text-align:left; border:none; cursor:pointer;">
-      <span class="nav-ico">🔒</span> Cerrar sesión
-    </button>
+      <button type="button" id="logout-btn" class="nav-item nav-item-logout">
+        <span class="nav-ico"><i class="fa-solid fa-right-from-bracket"></i></span> Cerrar sesión
+      </button>
+    </div>
   </aside>
 
   <!-- Main -->
@@ -269,6 +290,23 @@
         </div>
       </div>
 
+      <div class="panel-grid panel-grid-node-charts">
+        <div class="panel-box">
+          <div class="panel-box-head">
+            <h2>Pipeline de pedidos</h2>
+            <span class="hint" style="margin:0;">Nuevos → Seguimiento → Completados</span>
+          </div>
+          <div class="node-chart" id="resu-pipeline-chart">Cargando…</div>
+        </div>
+        <div class="panel-box">
+          <div class="panel-box-head">
+            <h2>Estado del inventario</h2>
+            <span class="hint" style="margin:0;">Disponible → Stock bajo → Sin stock</span>
+          </div>
+          <div class="node-chart" id="resu-inventario-chart">Cargando…</div>
+        </div>
+      </div>
+
       <div class="panel-box fullwidth resu-filtro-box">
         <div class="panel-box-head">
           <h2>Filtrar por rango de fechas</h2>
@@ -326,6 +364,14 @@
           </div>
           <div id="resu-origenes" class="mini-table">Cargando…</div>
         </div>
+      </div>
+
+      <div class="panel-box fullwidth">
+        <div class="panel-box-head">
+          <h2>Flujo de origen a venta</h2>
+          <span class="hint" style="margin:0;">De dónde llegan los visitantes hasta convertirse en ventas</span>
+        </div>
+        <div class="flow-chart" id="resu-flow-chart">Cargando…</div>
       </div>
 
       <div class="panel-grid">
@@ -426,18 +472,22 @@
         <h2>Inventario</h2>
         <p>Productos del catálogo: precio, stock, ofertas e imágenes.</p>
         <div class="header-actions">
-          <input type="search" id="inv-search" class="search" placeholder="Buscar producto...">
-          <label class="umbral-field">Umbral stock bajo
-            <input type="number" id="inv-umbral" min="0" step="1">
-          </label>
+          <div class="inv-search-row">
+            <input type="search" id="inv-search" class="search" placeholder="Buscar producto...">
+            <label class="umbral-field">Umbral stock bajo
+              <input type="number" id="inv-umbral" min="0" step="1">
+            </label>
+          </div>
           <button class="btn btn-primary" id="inv-new">+ Nuevo producto</button>
         </div>
         <div class="seg-tabs" id="inv-tabs">
           <button class="seg-tab active" data-itab="todos">Todos <span class="seg-tab-count" id="inv-count-todos">0</span></button>
           <button class="seg-tab" data-itab="bajo">Stock bajo <span class="seg-tab-count" id="inv-count-bajo">0</span></button>
           <button class="seg-tab" data-itab="sin">Sin stock <span class="seg-tab-count" id="inv-count-sin">0</span></button>
+          <button class="seg-tab" data-itab="control">Con control <span class="seg-tab-count" id="inv-count-control">0</span></button>
         </div>
       </header>
+      <div class="stat-chip-row" id="inv-stats"></div>
       <div class="table-wrap">
         <div class="inventory-grid" id="inv-grid"></div>
         <p class="empty" id="inv-empty" hidden>No hay productos todavía.</p>
@@ -453,16 +503,14 @@
           <input type="search" id="pack-search" class="search" placeholder="Buscar pack...">
           <button class="btn btn-primary" id="pack-new">+ Nuevo pack</button>
         </div>
+        <div class="seg-tabs" id="pack-tabs">
+          <button class="seg-tab active" data-ptab="todos">Todos <span class="seg-tab-count" id="pack-count-todos">0</span></button>
+          <button class="seg-tab" data-ptab="disponibles">Disponibles <span class="seg-tab-count" id="pack-count-disponibles">0</span></button>
+          <button class="seg-tab" data-ptab="oferta">En oferta <span class="seg-tab-count" id="pack-count-oferta">0</span></button>
+        </div>
       </header>
       <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th></th><th>Nombre</th><th>Categoría</th><th>Precio</th><th>Productos incluidos</th><th>Disponible</th><th></th>
-            </tr>
-          </thead>
-          <tbody id="pack-tbody"></tbody>
-        </table>
+        <div class="pack-grid" id="pack-grid"></div>
         <p class="empty" id="pack-empty" hidden>No hay packs todavía.</p>
       </div>
     </section>
@@ -681,6 +729,14 @@
       </div>
 
       <div class="modal-section">
+        <div class="modal-section-title"><span class="dot"></span> Nota especial (info)</div>
+        <label>Nota para este producto (ej. tiempo de anticipación, oferta especial...)
+          <textarea id="prod-info" rows="3" placeholder="Ej. Para este producto debe hacerse el pedido con 2 días de anticipación."></textarea>
+        </label>
+        <p class="hint">Déjalo vacío para no mostrar ninguna nota. Esta nota se guarda por separado y no forma parte de los datos del producto.</p>
+      </div>
+
+      <div class="modal-section">
         <div class="modal-section-title"><span class="dot"></span> Visibilidad</div>
         <div class="grid-2 checks">
           <label class="check"><input type="checkbox" id="prod-activo" checked> Disponible (visible en la tienda)</label>
@@ -800,13 +856,14 @@
 <div class="modal-backdrop" id="modal-image-detail">
   <div class="modal modal-image-detail">
     <header class="modal-header">
-      <h3>Detalle de imagen</h3>
+      <h3>Detalle de imagen<span class="image-detail-count" id="img-detail-count"></span></h3>
       <button class="modal-close" data-close="modal-image-detail">✕</button>
     </header>
     <div class="modal-body image-detail-body">
       <div class="image-detail-preview">
         <img id="img-detail-preview" src="" alt="Detalle de imagen">
       </div>
+      <div class="image-detail-thumbs" id="img-detail-thumbs" hidden></div>
       <div class="image-detail-grid">
         <div><strong>Nombre / public_id</strong><span id="img-detail-name">—</span></div>
         <div><strong>Cloudinary</strong><span id="img-detail-cloud">—</span></div>
@@ -852,6 +909,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=6"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>
