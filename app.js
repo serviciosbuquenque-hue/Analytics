@@ -161,8 +161,7 @@ async function loadCloudinaryUsage(){
     setText('cld-resources', usage.resources != null ? String(usage.resources) : '—');
     setText('cld-requests', usage.requests != null ? String(usage.requests) : '—');
     if (hint){
-      const base = 'Estos datos vienen del Admin API de Cloudinary; el dashboard visual de Cloudinary puede tardar en reflejarlos.';
-      hint.textContent = usage.last_updated ? `${base} Última actualización: ${usage.last_updated}` : base;
+      hint.textContent = usage.last_updated ? `Datos de Cloudinary actualizados: ${usage.last_updated}` : '';
       hint.className = 'hint';
     }
   }catch(e){
@@ -392,8 +391,7 @@ installServiceWorker();
 // guarda cada tipo en una carpeta distinta y hay que respetarla al construir
 // la URL o la imagen simplemente no existe en esa ruta.
 const CLD_SIZES = {
-  card: { w: 400, h: 300 },
-  thumb: { w: 140, h: 140 },
+  thumb: { w: 320 },
   detail: { w: 1000 }
 };
 
@@ -403,9 +401,7 @@ function cloudinaryUrl(publicId, folder = 'products', preset = null){
   if (!state.cloudName) return null;
   const size = preset ? CLD_SIZES[preset] : null;
   let transform = 'f_webp,q_auto';
-  if (size && size.w && size.h){
-    transform += `,c_fill,g_auto,w_${size.w},h_${size.h}`;
-  } else if (size && size.w){
+  if (size && size.w){
     transform += `,c_limit,w_${size.w}`;
   }
   return `https://res.cloudinary.com/${state.cloudName}/image/upload/${transform}/${folder}/${encodeURIComponent(publicId)}`;
@@ -907,7 +903,7 @@ function renderProductos(){
 
   // Construimos el HTML en un solo paso para minimizar reflows.
   const html = list.map(p => {
-    const imgUrl = cloudinaryUrl((p.imagenes || [])[0], 'products', 'card');
+    const imgUrl = cloudinaryUrl((p.imagenes || [])[0], 'products', 'thumb');
     const estado = estadoStockProducto(p);
     const available = p.disponibilidad !== false;
     const stockPill = estado === 'sin' ? `<span class="pill pill-danger">Sin stock</span>` : estado === 'bajo' ? `<span class="pill pill-warn">Stock bajo</span>` : '';
@@ -1199,7 +1195,7 @@ function renderPacks(){
   document.getElementById('pack-empty').hidden = list.length !== 0;
 
   list.forEach(p => {
-    const imgUrl = cloudinaryUrl((p.imagenes || [])[0] || p.imagen, 'packs', 'card');
+    const imgUrl = cloudinaryUrl((p.imagenes || [])[0] || p.imagen, 'packs', 'thumb');
     const caracteristicas = Array.isArray(p.caracteristicas)
       ? p.caracteristicas
       : (p.caracteristicas ? String(p.caracteristicas).split(/\r?\n/) : []);
