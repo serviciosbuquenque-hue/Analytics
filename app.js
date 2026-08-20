@@ -92,11 +92,8 @@ async function apiFetch(path, options = {}){
   }
   const base = state.apiUrl.replace(/\/$/, '');
   const res = await fetch(base + path, {
-    // Se manda igual por si el navegador sí soporta la cookie cross-site,
-    // pero la autenticación real va por el token Bearer de abajo: en
-    // iOS Safari (ITP) la cookie cross-site puede no viajar nunca, y sin
-    // el token la sesión "se cae" aunque el login haya sido correcto.
     credentials: 'include',
+    cache: 'no-store',
     ...options,
     headers: { 'Content-Type': 'application/json', ...authHeaders(), ...(options.headers || {}) }
   });
@@ -718,12 +715,11 @@ async function saveNotificationBanner(){
    INVENTARIO (PRODUCTOS)  ->  /api/products
    ================================================================ */
 
-async function loadProductos(){
+async function loadProductos(force = false){
   try{
-    // Cache corto para evitar refetchs inmediatos al navegar entre vistas.
     const now = Date.now();
-    const TTL = 8000; // 8 segundos
-    if (state.productos && state.productos.length && state._productosCacheTime && (now - state._productosCacheTime) < TTL){
+    const TTL = 8000;
+    if (!force && state.productos && state.productos.length && state._productosCacheTime && (now - state._productosCacheTime) < TTL){
       renderProductos();
       return;
     }
@@ -1099,7 +1095,7 @@ document.getElementById('prod-save').addEventListener('click', async () => {
       }catch(infoErr){ showToast('Producto guardado, pero falló la nota especial: ' + infoErr.message, true); }
     }
     closeModal('modal-producto');
-    loadProductos();
+    loadProductos(true);
   }catch(e){ showToast('Error guardando producto: ' + e.message, true); }
 });
 
@@ -1116,7 +1112,7 @@ async function deleteProducto(id){
     await apiFetch(`/api/products/${id}`, { method: 'DELETE' });
     apiFetch(`/api/info/${id}`, { method: 'DELETE' }).catch(() => {});
     showToast('Producto eliminado.');
-    loadProductos();
+    loadProductos(true);
   }catch(e){ showToast('Error eliminando: ' + e.message, true); }
 }
 
