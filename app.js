@@ -139,6 +139,39 @@ function formatBytes(bytes){
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function formatUsageBytes(bytes){
+  if (!bytes || bytes < 0) return '0 B';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+async function loadCloudinaryUsage(){
+  const hint = document.getElementById('cld-usage-hint');
+  try{
+    const data = await apiFetch('/api/admin/cloudinary-usage');
+    const usage = data.usage || {};
+    const credits = usage.credits || {};
+    setText('cld-credits', credits.used_percent != null ? `${Number(credits.used_percent).toFixed(1)}%` : (credits.usage != null ? String(credits.usage) : '—'));
+    setText('cld-credits-sub', credits.limit != null ? `de ${credits.limit} créditos` : (usage.plan ? `Plan ${usage.plan}` : '—'));
+    setText('cld-storage', usage.storage && usage.storage.usage != null ? formatUsageBytes(usage.storage.usage) : '—');
+    setText('cld-bandwidth', usage.bandwidth && usage.bandwidth.usage != null ? formatUsageBytes(usage.bandwidth.usage) : '—');
+    setText('cld-transformations', usage.transformations && usage.transformations.usage != null ? String(usage.transformations.usage) : '—');
+    setText('cld-resources', usage.resources != null ? String(usage.resources) : '—');
+    setText('cld-requests', usage.requests != null ? String(usage.requests) : '—');
+    if (hint){
+      hint.textContent = usage.last_updated ? `Datos de Cloudinary actualizados: ${usage.last_updated}` : '';
+      hint.className = 'hint';
+    }
+  }catch(e){
+    if (hint){
+      hint.textContent = 'No se pudo cargar el uso de Cloudinary: ' + e.message;
+      hint.className = 'hint err';
+    }
+  }
+}
+
 async function fetchImageSize(url){
   if (!url) return null;
   try {
@@ -218,7 +251,7 @@ async function setImageMetaInfo(img, labelEl){
 }
 
 function getImageDetailPayload(source, folder = 'products'){
-  const url = cloudinaryUrl(source, folder);
+  const url = cloudinaryUrl(source, folder, 'detail');
   const cloudinaryInfo = url ? parseCloudinaryUrl(url) : null;
   return {
     source: source || '—',
@@ -249,8 +282,8 @@ function renderImageDetailThumbs(){
   if (countEl) countEl.textContent = `${index + 1} de ${sources.length}`;
   wrap.hidden = false;
   wrap.innerHTML = sources.map((src, i) => {
-    const url = cloudinaryUrl(src, folder) || src;
-    return `<button type="button" class="img-detail-thumb${i === index ? ' active' : ''}" data-idx="${i}"><img src="${url}" alt="Imagen ${i + 1}"></button>`;
+    const url = cloudinaryUrl(src, folder, 'detailThumb') || src;
+    return `<button type="button" class="img-detail-thumb${i === index ? ' active' : ''}" data-idx="${i}"><img src="${url}" alt="Imagen ${i + 1}" loading="lazy" decoding="async"></button>`;
   }).join('');
   wrap.querySelectorAll('[data-idx]').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -357,11 +390,25 @@ installServiceWorker();
 // folder: 'products' para inventario, 'packs' para packs — Cloudinary
 // guarda cada tipo en una carpeta distinta y hay que respetarla al construir
 // la URL o la imagen simplemente no existe en esa ruta.
-function cloudinaryUrl(publicId, folder = 'products'){
+const CLD_SIZES = {
+  card: { w: 480, h: 360 },
+  tile: { w: 176, h: 176 },
+  detailThumb: { w: 112, h: 112 },
+  detail: { w: 1000 }
+};
+
+function cloudinaryUrl(publicId, folder = 'products', preset = null){
   if (!publicId) return null;
   if (/^https?:\/\//i.test(publicId) || publicId.startsWith('data:image')) return publicId;
   if (!state.cloudName) return null;
-  return `https://res.cloudinary.com/${state.cloudName}/image/upload/f_webp,q_auto/${folder}/${encodeURIComponent(publicId)}`;
+  const size = preset ? CLD_SIZES[preset] : null;
+  let transform = 'f_webp,q_auto';
+  if (size && size.w && size.h){
+    transform += `,c_fill,g_auto,w_${size.w},h_${size.h}`;
+  } else if (size && size.w){
+    transform += `,c_limit,w_${size.w}`;
+  }
+  return `https://res.cloudinary.com/${state.cloudName}/image/upload/${transform}/${folder}/${encodeURIComponent(publicId)}`;
 }
 
 function fileToDataUrl(file){
@@ -475,6 +522,7 @@ function goToView(view){
   if (view === 'pedidos') loadPedidosSection();
   if (view === 'usuarios'){ loadUsuarios(); loadClientes(); }
   if (view === 'notificaciones') loadNotificationBanner();
+  if (view === 'config') loadCloudinaryUsage();
   requestAnimationFrame(refreshAllSegTabsFade);
 }
 
@@ -557,6 +605,7 @@ document.getElementById('cfg-save').addEventListener('click', async () => {
     result.className = 'hint ok';
     loadPedidosSection();
     loadNotificationBanner();
+    loadCloudinaryUsage();
   } else {
     result.textContent = '✕ No se pudo conectar. Revisa la URL (debe incluir https:// y estar accesible).';
     result.className = 'hint err';
@@ -858,7 +907,7 @@ function renderProductos(){
 
   // Construimos el HTML en un solo paso para minimizar reflows.
   const html = list.map(p => {
-    const imgUrl = cloudinaryUrl((p.imagenes || [])[0]);
+    const imgUrl = cloudinaryUrl((p.imagenes || [])[0], 'products', 'card');
     const estado = estadoStockProducto(p);
     const available = p.disponibilidad !== false;
     const stockPill = estado === 'sin' ? `<span class="pill pill-danger">Sin stock</span>` : estado === 'bajo' ? `<span class="pill pill-warn">Stock bajo</span>` : '';
@@ -866,7 +915,7 @@ function renderProductos(){
     return `
       <article class="product-card${estado === 'bajo' ? ' stock-bajo' : estado === 'sin' ? ' stock-sin' : ''}${p.aplicar_stock ? ' stock-control-on' : ' stock-control-off'}">
         <div class="product-card-img">
-          ${imgUrl ? `<img class="product-thumb" src="${imgUrl}" alt="${escapeHtml(p.nombre)}">` : `<div class="thumb-placeholder"><i class="fa-solid fa-box-open"></i></div>`}
+          ${imgUrl ? `<img class="product-thumb" src="${imgUrl}" alt="${escapeHtml(p.nombre)}" loading="lazy" decoding="async">` : `<div class="thumb-placeholder"><i class="fa-solid fa-box-open"></i></div>`}
           ${imgUrl ? `<div class="image-meta">Cargando...</div>` : ''}
           ${imgUrl ? `<button class="img-detail-btn" title="Ver detalle de imagen" data-img-detail="${p.id}"><i class="fa-solid fa-magnifying-glass"></i></button>` : ''}
         </div>
@@ -997,13 +1046,15 @@ function renderImageGrid(gridId, images, folder = 'products'){
   const grid = document.getElementById(gridId);
   grid.innerHTML = '';
   images.forEach((img, idx) => {
-    const url = cloudinaryUrl(img, folder);
+    const url = cloudinaryUrl(img, folder, 'tile');
     const tile = document.createElement('div');
     tile.className = 'image-tile';
     if (url) {
       const imgEl = document.createElement('img');
       imgEl.src = url;
       imgEl.alt = 'Imagen';
+      imgEl.loading = 'lazy';
+      imgEl.decoding = 'async';
       imgEl.className = 'clickable-image';
       imgEl.addEventListener('click', () => showImageDetail(images, folder, idx));
       imgEl.addEventListener('error', () => {
@@ -1148,7 +1199,7 @@ function renderPacks(){
   document.getElementById('pack-empty').hidden = list.length !== 0;
 
   list.forEach(p => {
-    const imgUrl = cloudinaryUrl((p.imagenes || [])[0] || p.imagen, 'packs');
+    const imgUrl = cloudinaryUrl((p.imagenes || [])[0] || p.imagen, 'packs', 'card');
     const caracteristicas = Array.isArray(p.caracteristicas)
       ? p.caracteristicas
       : (p.caracteristicas ? String(p.caracteristicas).split(/\r?\n/) : []);
@@ -1164,7 +1215,7 @@ function renderPacks(){
     card.className = 'pack-card' + (p.oferta ? ' pack-oferta' : '') + (!disponible ? ' pack-oculto' : '');
     card.innerHTML = `
       <div class="pack-card-img">
-        ${imgUrl ? `<img class="pack-thumb" src="${imgUrl}" alt="${escapeHtml(p.nombre)}">` : `<div class="thumb-placeholder"><i class="fa-solid fa-gift"></i></div>`}
+        ${imgUrl ? `<img class="pack-thumb" src="${imgUrl}" alt="${escapeHtml(p.nombre)}" loading="lazy" decoding="async">` : `<div class="thumb-placeholder"><i class="fa-solid fa-gift"></i></div>`}
         ${imgUrl ? `<div class="image-meta">Cargando...</div>` : ''}
         ${imgUrl ? `<button class="img-detail-btn" title="Ver detalle de imagen" data-pack-img-detail="${p.id}"><i class="fa-solid fa-magnifying-glass"></i></button>` : ''}
         <div class="pack-badges">
