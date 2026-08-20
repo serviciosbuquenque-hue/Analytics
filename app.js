@@ -161,7 +161,8 @@ async function loadCloudinaryUsage(){
     setText('cld-resources', usage.resources != null ? String(usage.resources) : '—');
     setText('cld-requests', usage.requests != null ? String(usage.requests) : '—');
     if (hint){
-      hint.textContent = usage.last_updated ? `Datos de Cloudinary actualizados: ${usage.last_updated}` : '';
+      const base = 'Estos datos vienen del Admin API de Cloudinary; el dashboard visual de Cloudinary puede tardar en reflejarlos.';
+      hint.textContent = usage.last_updated ? `${base} Última actualización: ${usage.last_updated}` : base;
       hint.className = 'hint';
     }
   }catch(e){
@@ -282,7 +283,7 @@ function renderImageDetailThumbs(){
   if (countEl) countEl.textContent = `${index + 1} de ${sources.length}`;
   wrap.hidden = false;
   wrap.innerHTML = sources.map((src, i) => {
-    const url = cloudinaryUrl(src, folder, 'detailThumb') || src;
+    const url = cloudinaryUrl(src, folder, 'thumb') || src;
     return `<button type="button" class="img-detail-thumb${i === index ? ' active' : ''}" data-idx="${i}"><img src="${url}" alt="Imagen ${i + 1}" loading="lazy" decoding="async"></button>`;
   }).join('');
   wrap.querySelectorAll('[data-idx]').forEach(btn => {
@@ -391,9 +392,8 @@ installServiceWorker();
 // guarda cada tipo en una carpeta distinta y hay que respetarla al construir
 // la URL o la imagen simplemente no existe en esa ruta.
 const CLD_SIZES = {
-  card: { w: 480, h: 360 },
-  tile: { w: 176, h: 176 },
-  detailThumb: { w: 112, h: 112 },
+  card: { w: 400, h: 300 },
+  thumb: { w: 140, h: 140 },
   detail: { w: 1000 }
 };
 
@@ -1046,7 +1046,7 @@ function renderImageGrid(gridId, images, folder = 'products'){
   const grid = document.getElementById(gridId);
   grid.innerHTML = '';
   images.forEach((img, idx) => {
-    const url = cloudinaryUrl(img, folder, 'tile');
+    const url = cloudinaryUrl(img, folder, 'thumb');
     const tile = document.createElement('div');
     tile.className = 'image-tile';
     if (url) {
