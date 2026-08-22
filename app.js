@@ -1614,13 +1614,20 @@ function renderPedidosGuardados(){
 
 async function asignarPedido(id){
   try{
-    // Al asignar, el pedido arranca en seguimiento con los 4 estados en falso.
-    await apiFetch(`/api/pedidos/${id}/asignar`, {
+    const { pedido } = await apiFetch(`/api/pedidos/${id}/asignar`, {
       method: 'POST',
       body: JSON.stringify({ aceptado: false, entregado: false, pendiente_pago: false, pagado: false })
     });
+    state.pedidosNuevos = state.pedidosNuevos.filter(p => p.id !== id);
+    state.pedidosSeguimiento.push(normalizePedidoState({
+      ...pedido,
+      fecha_asignacion: pedido.fecha_asignacion || pedido.fecha_registro_backend || '—'
+    }));
     showToast('Pedido guardado.');
-    loadPedidosSection();
+    renderPedidosNuevos();
+    renderPedidosGuardados();
+    renderPedidosSeguimiento();
+    actualizarBadgesPedidos();
   }catch(e){ showToast('Error asignando pedido: ' + e.message, true); }
 }
 
@@ -1628,8 +1635,11 @@ async function deletePedidoNuevo(id){
   if (!confirm('¿Eliminar este pedido nuevo?')) return;
   try{
     await apiFetch(`/api/pedidos/${id}`, { method: 'DELETE' });
+    state.pedidosNuevos = state.pedidosNuevos.filter(p => p.id !== id);
     showToast('Pedido eliminado.');
-    loadPedidosSection();
+    renderPedidosNuevos();
+    renderPedidosGuardados();
+    actualizarBadgesPedidos();
   }catch(e){ showToast('Error eliminando: ' + e.message, true); }
 }
 
@@ -1741,12 +1751,14 @@ document.querySelectorAll('#seg-tabs .seg-tab').forEach(btn => {
 
 async function updateEstadosPedido(id, cambios){
   try{
-    await apiFetch(`/api/pedidos-asignados/${id}`, {
+    const { pedido } = await apiFetch(`/api/pedidos-asignados/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(cambios)
     });
+    const idx = state.pedidosSeguimiento.findIndex(p => p.id === id);
+    if (idx !== -1) state.pedidosSeguimiento[idx] = normalizePedidoState(pedido);
     showToast('Estado actualizado.');
-    loadPedidosSection();
+    renderPedidosSeguimiento();
   }catch(e){
     showToast('Error actualizando estado: ' + e.message, true);
     renderPedidosSeguimiento(); // revierte el checkbox visualmente si falló
@@ -1757,8 +1769,9 @@ async function deletePedidoSeguimiento(id){
   if (!confirm('¿Eliminar este pedido guardado?')) return;
   try{
     await apiFetch(`/api/pedidos-asignados/${id}`, { method: 'DELETE' });
+    state.pedidosSeguimiento = state.pedidosSeguimiento.filter(p => p.id !== id);
     showToast('Pedido eliminado.');
-    loadPedidosSection();
+    renderPedidosSeguimiento();
   }catch(e){ showToast('Error eliminando: ' + e.message, true); }
 }
 
