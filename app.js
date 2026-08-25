@@ -908,6 +908,10 @@ function renderProductos(){
     const available = p.disponibilidad !== false;
     const stockPill = estado === 'sin' ? `<span class="pill pill-danger">Sin stock</span>` : estado === 'bajo' ? `<span class="pill pill-warn">Stock bajo</span>` : '';
     const controlPill = p.aplicar_stock ? `<span class="pill pill-control-on">Control stock</span>` : `<span class="pill pill-control-off">Sin control</span>`;
+    const necesitaRevisarActivacion = !available && Number(p.stock || 0) > 0;
+    const alertaReactivar = necesitaRevisarActivacion
+      ? `<span class="pill pill-alert" title="Se desactivó automáticamente por falta de stock y ya tiene stock repuesto. Ábrelo y guárdalo para reactivarlo.">⚠ Repuesto, sin activar</span>`
+      : '';
     return `
       <article class="product-card${estado === 'bajo' ? ' stock-bajo' : estado === 'sin' ? ' stock-sin' : ''}${p.aplicar_stock ? ' stock-control-on' : ' stock-control-off'}">
         <div class="product-card-img">
@@ -924,6 +928,7 @@ function renderProductos(){
             <div class="product-card-statuses">
               <span class="pill ${available ? 'pill-yes' : 'pill-no'}">${available ? 'Disponible' : 'Oculto'}</span>
               ${controlPill}
+              ${alertaReactivar}
             </div>
           </div>
           <div class="product-card-meta">
@@ -931,6 +936,10 @@ function renderProductos(){
             <div><span>Stock</span><strong>${p.stock ?? 0} ${stockPill}</strong></div>
             <div><span>Oferta</span><strong>${p.oferta ? `-${p.descuento || 0}%` : 'No'}</strong></div>
             <div><span>Más vendido</span><strong>${p.mas_vendido ? 'Sí' : 'No'}</strong></div>
+          </div>
+          <div class="product-card-dates">
+            <span><i class="fa-solid fa-plus"></i> ${formatFechaCorta(p.fecha_creacion)}</span>
+            <span><i class="fa-solid fa-pen"></i> ${formatFechaCorta(p.fecha_actualizacion)}</span>
           </div>
           <div class="product-card-actions">
             <button class="btn btn-ghost btn-small" data-edit="${p.id}">Editar</button>
@@ -1017,7 +1026,24 @@ function openProductoModal(id){
   const productoDisponible = p
     ? (p.disponibilidad !== undefined ? p.disponibilidad !== false : p.disponible !== false)
     : true;
-  document.getElementById('prod-activo').checked = productoDisponible;
+  const stockActualNum = p ? Number(p.stock ?? 0) : 0;
+  const reactivadoAuto = p && !productoDisponible && stockActualNum > 0;
+  document.getElementById('prod-activo').checked = reactivadoAuto ? true : productoDisponible;
+  const activoHint = document.getElementById('prod-activo-hint');
+  if (activoHint){
+    if (reactivadoAuto){
+      activoHint.hidden = false;
+      activoHint.textContent = 'Este producto se desactivó automáticamente por quedarse sin stock, pero ya tiene stock repuesto. Se marcó "Disponible" de nuevo; guarda para confirmarlo (o desmárcalo si quieres mantenerlo oculto).';
+      activoHint.className = 'hint warn';
+    } else if (p && p.desactivado_por_stock && !productoDisponible){
+      activoHint.hidden = false;
+      activoHint.textContent = 'Este producto se desactivó automáticamente porque se quedó sin stock. Repón el stock y márcalo como disponible cuando quieras que vuelva a verse en la tienda.';
+      activoHint.className = 'hint warn';
+    } else {
+      activoHint.hidden = true;
+      activoHint.textContent = '';
+    }
+  }
   document.getElementById('prod-mas-vendido').checked = p ? !!p.mas_vendido : false;
   document.getElementById('prod-delete').hidden = !p;
   const infoEntry = p ? state.infoMap[p.id] : null;
@@ -1235,6 +1261,10 @@ function renderPacks(){
             : `<span class="price-final">$${precio.toFixed(2)}</span>`}
         </div>
         ${caracteristicasHtml}
+        <div class="pack-card-dates">
+          <span><i class="fa-solid fa-plus"></i> ${formatFechaCorta(p.fecha_creacion)}</span>
+          <span><i class="fa-solid fa-pen"></i> ${formatFechaCorta(p.fecha_actualizacion)}</span>
+        </div>
         <div class="pack-card-actions">
           <button class="btn btn-ghost btn-small" data-edit="${p.id}"><i class="fa-solid fa-pen"></i> Editar</button>
           <button class="btn btn-danger btn-small" data-del="${p.id}"><i class="fa-solid fa-trash"></i> Eliminar</button>
@@ -2439,6 +2469,17 @@ function escapeHtml(str){
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+// El backend guarda fecha_creacion / fecha_actualizacion como
+// "yyyy-MM-dd HH:mm:ss" ya en hora de La Habana. Se formatea sin pasar por
+// Date() para no reinterpretarla con el timezone del navegador.
+function formatFechaCorta(fecha){
+  if (!fecha) return '—';
+  const match = String(fecha).match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  if (!match) return String(fecha);
+  const [, y, m, d, h, min] = match;
+  return `${d}/${m}/${y} ${h}:${min}`;
 }
 
 /* ------------------------------- Autenticación -------------------------------- */

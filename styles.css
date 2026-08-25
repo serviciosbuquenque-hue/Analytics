@@ -837,6 +837,17 @@ svg.chart-hovering .flow-node:not(.is-active){ opacity: .35; }
 .product-card-meta div{ display:flex; flex-direction:column; gap: 2px; }
 .product-card-meta span{ font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
 .product-card-meta strong{ color: var(--text); font-size: 13px; }
+.product-card-dates,
+.pack-card-dates{
+  display:flex; flex-wrap:wrap; gap: 6px 14px;
+  font-size: 11px; color: var(--text-faint);
+  border-top: 1px solid rgba(255,255,255,.06);
+  padding-top: 8px;
+}
+.product-card-dates span,
+.pack-card-dates span{ display:inline-flex; align-items:center; gap: 5px; white-space: nowrap; }
+.product-card-dates i,
+.pack-card-dates i{ font-size: 10px; opacity:.7; }
 .product-card-actions{
   margin-top:auto;
   display:flex;
@@ -1072,6 +1083,7 @@ tbody tr:hover td{ background: var(--surface-2); }
 .pill-no{ background: var(--surface-3); color: var(--text-muted); }
 .pill-warn{ background: rgb(255 185 98 / 14%); color: #f0ba54; }
 .pill-danger{ background: rgba(240,84,106,.14); color: var(--red); }
+.pill-alert{ background: rgba(240,84,106,.16); color: var(--red); border: 1px solid rgba(240,84,106,.32); text-align:right; }
 
 .row-actions{ display:flex; gap:6px; justify-content:flex-end; flex-wrap: wrap; }
 
@@ -1403,6 +1415,7 @@ textarea{ resize: vertical; }
 .hint{ font-size:12.5px; color: var(--text-muted); margin:0; }
 .hint.ok{ color: var(--teal); }
 .hint.err{ color: var(--red); }
+.hint.warn{ color: #f0ba54; }
 
 .toast{
   position: fixed; bottom: 24px; right: 24px;
@@ -1446,6 +1459,7 @@ textarea{ resize: vertical; }
   .inv-search-row{ width:100%; min-width:0; }
   .grid-2, .grid-3{ grid-template-columns: 1fr; }
   .inventory-grid{ grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:12px; }
+  .pack-grid{ grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px; }
   /* Ajuste específico para el listado de packs on tablet/móvil */
   #view-packs .pack-included{
     max-width: 100%;
@@ -1638,6 +1652,10 @@ textarea{ resize: vertical; }
      achicar todo hasta que no se lea nada. */
   .inventory-grid{ grid-template-columns: 1fr; gap: 12px; }
   .product-card-actions .btn{ flex:1 1 auto; }
+  .product-card-dates,
+  .pack-card-dates{ font-size: 10.5px; gap: 4px 10px; }
+  .product-card-statuses{ align-items:flex-start; }
+  .pill-alert{ text-align:left; }
 
   /* Modal casi de borde a borde, con altura ajustada al viewport real
      de móviles (evita el salto por la barra de direcciones de iOS/Android)
