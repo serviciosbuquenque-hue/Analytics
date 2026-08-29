@@ -13,7 +13,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Analytics">
-<link rel="stylesheet" href="styles.css?v=7">
+<link rel="stylesheet" href="styles.css?v=8">
 </head>
 <body>
 
@@ -513,6 +513,7 @@
               <input type="number" id="inv-umbral" min="0" step="1">
             </label>
           </div>
+          <button class="btn btn-ghost" id="inv-check-ventas-btn"><i class="fa-solid fa-chart-line"></i> Ventas por producto</button>
           <button class="btn btn-primary" id="inv-new">+ Nuevo producto</button>
         </div>
         <div class="seg-tabs" id="inv-tabs">
@@ -943,8 +944,112 @@
   </div>
 </div>
 
+<!-- ===================== MODAL VENTAS POR PRODUCTO ===================== -->
+<div class="modal-backdrop" id="modal-stock-check">
+  <div class="modal">
+    <header class="modal-header">
+      <h3>Ventas por producto</h3>
+      <button class="modal-close" data-close="modal-stock-check">✕</button>
+    </header>
+    <div class="modal-body">
+
+      <div class="modal-section">
+        <div class="modal-section-title"><span class="dot"></span> Producto</div>
+        <div class="autocomplete-wrap">
+          <input type="search" id="stockchk-search" class="search" placeholder="Buscar producto (con o sin tildes)..." autocomplete="off">
+          <div class="autocomplete-list" id="stockchk-suggestions" hidden></div>
+        </div>
+        <div class="stockchk-selected" id="stockchk-selected" hidden>
+          <div class="stockchk-selected-info">
+            <strong id="stockchk-selected-nombre">—</strong>
+            <span id="stockchk-selected-meta">—</span>
+          </div>
+          <button type="button" class="btn btn-ghost btn-small" id="stockchk-clear">Cambiar producto</button>
+        </div>
+        <p class="hint" id="stockchk-empty-hint">Selecciona un producto para comenzar.</p>
+      </div>
+
+      <div class="modal-section" id="stockchk-filtro-section" hidden>
+        <div class="modal-section-title"><span class="dot"></span> Rango a analizar</div>
+        <div class="seg-tabs" id="stockchk-mode-tabs">
+          <button class="seg-tab active" data-mode="fecha">Por fecha</button>
+          <button class="seg-tab" data-mode="pedidos">Por rango de pedidos</button>
+        </div>
+
+        <div id="stockchk-modo-fecha">
+          <div class="resu-filtro-row">
+            <div class="seg-tabs" id="stockchk-rango-presets">
+              <button class="seg-tab" data-rango="hoy">Hoy</button>
+              <button class="seg-tab" data-rango="ayer">Ayer</button>
+              <button class="seg-tab" data-rango="7dias">Últimos 7 días</button>
+              <button class="seg-tab active" data-rango="30dias">Últimos 30 días</button>
+              <button class="seg-tab" data-rango="mes">Este mes</button>
+              <button class="seg-tab" data-rango="mesanterior">Mes anterior</button>
+            </div>
+            <div class="resu-filtro-custom">
+              <label>Desde <input type="date" id="stockchk-desde"></label>
+              <label>Hasta <input type="date" id="stockchk-hasta"></label>
+              <button class="btn btn-ghost btn-small" id="stockchk-rango-aplicar">Aplicar rango</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="stockchk-modo-pedidos" hidden>
+          <div class="resu-filtro-custom">
+            <label>Pedido desde (N.º orden) <input type="number" id="stockchk-orden-desde" min="0" step="1" placeholder="Ej. 100"></label>
+            <label>Pedido hasta (N.º orden) <input type="number" id="stockchk-orden-hasta" min="0" step="1" placeholder="Ej. 150"></label>
+            <button class="btn btn-ghost btn-small" id="stockchk-orden-aplicar">Aplicar rango</button>
+          </div>
+          <p class="hint">Se toman en cuenta los pedidos nuevos y los que ya están en seguimiento, según su número de orden.</p>
+        </div>
+      </div>
+
+      <div id="stockchk-resultados" hidden>
+        <div class="stat-grid">
+          <div class="stat-card accent">
+            <span class="stat-label">Unidades pedidas en el rango</span>
+            <span class="stat-value" id="stockchk-total-unidades">—</span>
+            <span class="stat-sub" id="stockchk-rango-label">—</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Stock actual</span>
+            <span class="stat-value" id="stockchk-stock-actual">—</span>
+            <span class="stat-sub">unidades disponibles ahora mismo</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Pedidos con este producto</span>
+            <span class="stat-value" id="stockchk-total-pedidos">—</span>
+            <span class="stat-sub">dentro del rango seleccionado</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Salida diaria promedio</span>
+            <span class="stat-value" id="stockchk-salida-diaria">—</span>
+            <span class="stat-sub" id="stockchk-dias-sub">—</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Autonomía de stock estimada</span>
+            <span class="stat-value" id="stockchk-autonomia">—</span>
+            <span class="stat-sub">al ritmo de venta de este rango</span>
+          </div>
+        </div>
+
+        <div class="panel-box">
+          <div class="panel-box-head">
+            <h2>Pedidos incluidos en el rango</h2>
+          </div>
+          <div id="stockchk-pedidos-list" class="mini-table">Cargando…</div>
+        </div>
+      </div>
+
+    </div>
+    <footer class="modal-footer">
+      <button class="btn btn-ghost" data-close="modal-stock-check">Cerrar</button>
+    </footer>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=10"></script>
+<script src="app.js?v=11"></script>
 </body>
 </html>

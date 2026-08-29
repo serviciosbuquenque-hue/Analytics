@@ -942,6 +942,7 @@ function renderProductos(){
             <span><i class="fa-solid fa-pen"></i> ${formatFechaCorta(p.fecha_actualizacion)}</span>
           </div>
           <div class="product-card-actions">
+            <button class="btn btn-ghost btn-small" data-ventas="${p.id}">Ventas</button>
             <button class="btn btn-ghost btn-small" data-edit="${p.id}">Editar</button>
             <button class="btn btn-danger btn-small" data-del="${p.id}">Eliminar</button>
           </div>
@@ -970,6 +971,8 @@ function renderProductos(){
 
   // Event delegation: un único handler para editar/eliminar/ver imagen.
   grid.onclick = function(e){
+    const ventas = e.target.closest && e.target.closest('[data-ventas]');
+    if (ventas) return abrirModalVentasProducto(ventas.dataset.ventas);
     const edit = e.target.closest && e.target.closest('[data-edit]');
     if (edit) return openProductoModal(edit.dataset.edit);
     const del = e.target.closest && e.target.closest('[data-del]');
@@ -3559,3 +3562,357 @@ if (resumenBtn) resumenBtn.addEventListener('click', loadResumen);
     });
   }
 })();
+
+/* =========================================================================
+   VENTAS POR PRODUCTO — verificación de stock vs. pedidos
+   Dado un producto, calcula cuántas unidades se han pedido dentro de un
+   rango (por fecha o por número de pedido), lo compara con el stock actual
+   y calcula la salida diaria promedio en ese rango. Reutiliza los mismos
+   endpoints/datos que ya usan Pedidos y Resumen, sin modificar ni depender
+   de sus funciones para no romper nada existente.
+   ========================================================================= */
+
+state.stockCheck = {
+  prodId: null,
+  modo: 'fecha',
+  rango: { preset: '30dias', desde: null, hasta: null },
+  ordenDesde: null,
+  ordenHasta: null,
+  pedidosCache: null
+};
+
+function normalizeIdComparableFrontend(value){
+  return String(value ?? '').trim().toLowerCase();
+}
+
+// Determina si un ítem de "compras" de un pedido corresponde al producto
+// dado. Primero intenta por id (igual que hace el backend al descontar
+// stock); si el ítem no trae ningún id, cae a comparar el nombre ya
+// normalizado (sin tildes/mayúsculas) para no perder pedidos antiguos.
+function compraCoincideConProducto(item, prod){
+  if (!item || !prod) return false;
+  const posiblesIds = [item.id, item.productId, item.product_id, item.productoId, item.producto_id]
+    .filter(v => v !== undefined && v !== null && String(v).trim() !== '')
+    .map(normalizeIdComparableFrontend);
+  if (posiblesIds.length) return posiblesIds.includes(normalizeIdComparableFrontend(prod.id));
+  const nombreItem = normalizeText(item.name || item.nombre || '');
+  return !!nombreItem && nombreItem === normalizeText(prod.nombre);
+}
+
+function cantidadProductoEnPedido(p, prod){
+  const compras = Array.isArray(p.compras) ? p.compras : [];
+  return compras.reduce((acc, item) => acc + (compraCoincideConProducto(item, prod) ? (Number(item.quantity ?? item.cantidad ?? 1) || 0) : 0), 0);
+}
+
+// Trae y combina pedidos nuevos + en seguimiento (deduplicados por pedido
+// original), igual que hace loadResumen, pero cacheado aparte para esta
+// herramienta y sin tocar state.pedidosNuevos/state.pedidosSeguimiento.
+async function cargarStockCheckPedidos(forzar = false){
+  if (state.stockCheck.pedidosCache && !forzar) return state.stockCheck.pedidosCache;
+  const [nuevosData, asignadosData] = await Promise.all([
+    apiFetch('/api/pedidos'),
+    apiFetch('/api/pedidos-asignados').catch(() => ({ pedidosAsignados: [] }))
+  ]);
+  const nuevos = nuevosData.pedidos || [];
+  const asignados = asignadosData.pedidosAsignados || [];
+  const asignadosIds = new Set(asignados.map(p => getOriginalPedidoId(p)));
+  const nuevosSinAsignar = nuevos.filter(p => !asignadosIds.has(getOriginalPedidoId(p)));
+  const mapa = new Map();
+  [...nuevosSinAsignar, ...asignados].forEach(p => {
+    const id = getOriginalPedidoId(p) || `tmp-${Math.random()}`;
+    if (!mapa.has(id) || p.fecha_asignacion) mapa.set(id, p);
+  });
+  state.stockCheck.pedidosCache = Array.from(mapa.values());
+  return state.stockCheck.pedidosCache;
+}
+
+function calcularRangoFechasStockCheck(){
+  const { preset, desde, hasta } = state.stockCheck.rango;
+  const hoy = new Date();
+  const inicioDia = (d) => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
+  const finDia = (d) => { const x = new Date(d); x.setHours(23,59,59,999); return x; };
+  if (preset === 'custom' && desde && hasta) return { desde: inicioDia(new Date(desde)), hasta: finDia(new Date(hasta)), etiqueta: `${desde} a ${hasta}` };
+  if (preset === 'ayer'){ const ayer = new Date(hoy); ayer.setDate(ayer.getDate() - 1); return { desde: inicioDia(ayer), hasta: finDia(ayer), etiqueta: 'Ayer' }; }
+  if (preset === '7dias'){ const inicio = new Date(hoy); inicio.setDate(inicio.getDate() - 6); return { desde: inicioDia(inicio), hasta: finDia(hoy), etiqueta: 'Últimos 7 días' }; }
+  if (preset === '30dias'){ const inicio = new Date(hoy); inicio.setDate(inicio.getDate() - 29); return { desde: inicioDia(inicio), hasta: finDia(hoy), etiqueta: 'Últimos 30 días' }; }
+  if (preset === 'mes'){ const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1); return { desde: inicioDia(inicio), hasta: finDia(hoy), etiqueta: 'Este mes' }; }
+  if (preset === 'mesanterior'){ const inicio = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1); const fin = new Date(hoy.getFullYear(), hoy.getMonth(), 0); return { desde: inicioDia(inicio), hasta: finDia(fin), etiqueta: 'Mes anterior' }; }
+  return { desde: inicioDia(hoy), hasta: finDia(hoy), etiqueta: 'Hoy' };
+}
+
+function renderStockCheckProductoSeleccionado(prod){
+  const wrap = document.getElementById('stockchk-selected');
+  const search = document.getElementById('stockchk-search');
+  const filtroSection = document.getElementById('stockchk-filtro-section');
+  const emptyHint = document.getElementById('stockchk-empty-hint');
+  if (!wrap || !search || !filtroSection || !emptyHint) return;
+  if (!prod){
+    wrap.hidden = true;
+    search.hidden = false;
+    search.value = '';
+    filtroSection.hidden = true;
+    document.getElementById('stockchk-resultados').hidden = true;
+    emptyHint.hidden = false;
+    return;
+  }
+  emptyHint.hidden = true;
+  wrap.hidden = false;
+  search.hidden = true;
+  filtroSection.hidden = false;
+  setText('stockchk-selected-nombre', prod.nombre);
+  const estado = estadoStockProducto(prod);
+  const estadoTxt = estado === 'sin' ? 'Sin stock' : estado === 'bajo' ? 'Stock bajo' : estado === 'na' ? 'Sin control de stock' : 'Stock ok';
+  setText('stockchk-selected-meta', `Stock actual: ${prod.stock ?? 0} · ${estadoTxt}`);
+}
+
+function seleccionarProductoStockCheck(prodId){
+  state.stockCheck.prodId = prodId || null;
+  const prod = prodId ? state.productos.find(p => String(p.id) === String(prodId)) : null;
+  renderStockCheckProductoSeleccionado(prod);
+  if (prod) calcularStockCheck();
+}
+
+function abrirModalVentasProducto(prodId){
+  state.stockCheck.pedidosCache = null;
+  state.stockCheck.modo = 'fecha';
+  state.stockCheck.rango = { preset: '30dias', desde: null, hasta: null };
+  state.stockCheck.ordenDesde = null;
+  state.stockCheck.ordenHasta = null;
+
+  const suggestions = document.getElementById('stockchk-suggestions');
+  if (suggestions){ suggestions.hidden = true; suggestions.innerHTML = ''; }
+
+  document.querySelectorAll('#stockchk-mode-tabs [data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === 'fecha'));
+  const modoFecha = document.getElementById('stockchk-modo-fecha');
+  const modoPedidos = document.getElementById('stockchk-modo-pedidos');
+  if (modoFecha) modoFecha.hidden = false;
+  if (modoPedidos) modoPedidos.hidden = true;
+
+  document.querySelectorAll('#stockchk-rango-presets [data-rango]').forEach(b => b.classList.toggle('active', b.dataset.rango === '30dias'));
+  const desdeInput = document.getElementById('stockchk-desde');
+  const hastaInput = document.getElementById('stockchk-hasta');
+  const ordenDesdeInput = document.getElementById('stockchk-orden-desde');
+  const ordenHastaInput = document.getElementById('stockchk-orden-hasta');
+  if (desdeInput) desdeInput.value = '';
+  if (hastaInput) hastaInput.value = '';
+  if (ordenDesdeInput) ordenDesdeInput.value = '';
+  if (ordenHastaInput) ordenHastaInput.value = '';
+
+  seleccionarProductoStockCheck(prodId || null);
+  openModal('modal-stock-check');
+}
+
+document.getElementById('inv-check-ventas-btn')?.addEventListener('click', () => abrirModalVentasProducto(null));
+document.getElementById('stockchk-clear')?.addEventListener('click', () => seleccionarProductoStockCheck(null));
+
+/* -------- Buscador de producto (ignora tildes/mayúsculas, ej. Café/cafe) -------- */
+(function initStockCheckBuscador(){
+  const input = document.getElementById('stockchk-search');
+  const lista = document.getElementById('stockchk-suggestions');
+  if (!input || !lista) return;
+
+  const mostrarSugerencias = () => {
+    const query = normalizeText(input.value.trim());
+    const productos = query
+      ? state.productos.filter(p => normalizeText(p.nombre).includes(query))
+      : state.productos;
+    const top = productos.slice(0, 8);
+    lista.innerHTML = top.length
+      ? top.map((p, i) => `
+        <button type="button" class="autocomplete-item${i === 0 ? ' active' : ''}" data-prod-id="${escapeHtml(String(p.id))}">
+          <span class="autocomplete-item-name">${escapeHtml(p.nombre)}</span>
+          <span class="autocomplete-item-price">Stock: ${p.stock ?? 0}</span>
+        </button>`).join('')
+      : `<div class="autocomplete-empty">Sin coincidencias</div>`;
+    lista.hidden = false;
+  };
+
+  input.addEventListener('focus', mostrarSugerencias);
+  input.addEventListener('input', mostrarSugerencias);
+
+  input.addEventListener('keydown', (e) => {
+    const items = Array.from(lista.querySelectorAll('.autocomplete-item'));
+    if (!items.length) return;
+    let activeIdx = items.findIndex(it => it.classList.contains('active'));
+    if (e.key === 'ArrowDown'){
+      e.preventDefault();
+      activeIdx = Math.min(items.length - 1, activeIdx + 1);
+      items.forEach(it => it.classList.remove('active'));
+      items[activeIdx].classList.add('active');
+      items[activeIdx].scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'ArrowUp'){
+      e.preventDefault();
+      activeIdx = Math.max(0, activeIdx - 1);
+      items.forEach(it => it.classList.remove('active'));
+      items[activeIdx].classList.add('active');
+      items[activeIdx].scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter'){
+      e.preventDefault();
+      const activo = items[activeIdx] || items[0];
+      if (activo) seleccionarProductoStockCheck(activo.dataset.prodId);
+      lista.hidden = true;
+    } else if (e.key === 'Escape'){
+      lista.hidden = true;
+    }
+  });
+
+  lista.addEventListener('mousedown', (e) => {
+    const item = e.target.closest && e.target.closest('[data-prod-id]');
+    if (!item) return;
+    e.preventDefault();
+    seleccionarProductoStockCheck(item.dataset.prodId);
+    lista.hidden = true;
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!lista.hidden && !lista.contains(e.target) && e.target !== input) lista.hidden = true;
+  });
+})();
+
+/* --------------------------- Selector de modo de rango --------------------------- */
+document.querySelectorAll('#stockchk-mode-tabs [data-mode]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    state.stockCheck.modo = btn.dataset.mode;
+    document.querySelectorAll('#stockchk-mode-tabs [data-mode]').forEach(b => b.classList.toggle('active', b === btn));
+    document.getElementById('stockchk-modo-fecha').hidden = state.stockCheck.modo !== 'fecha';
+    document.getElementById('stockchk-modo-pedidos').hidden = state.stockCheck.modo !== 'pedidos';
+    if (state.stockCheck.prodId) calcularStockCheck();
+  });
+});
+
+document.querySelectorAll('#stockchk-rango-presets [data-rango]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    state.stockCheck.rango = { preset: btn.dataset.rango, desde: null, hasta: null };
+    document.querySelectorAll('#stockchk-rango-presets [data-rango]').forEach(b => b.classList.toggle('active', b === btn));
+    document.getElementById('stockchk-desde').value = '';
+    document.getElementById('stockchk-hasta').value = '';
+    if (state.stockCheck.prodId) calcularStockCheck();
+  });
+});
+
+document.getElementById('stockchk-rango-aplicar')?.addEventListener('click', () => {
+  const desde = document.getElementById('stockchk-desde').value;
+  const hasta = document.getElementById('stockchk-hasta').value;
+  if (!desde || !hasta) return showToast('Selecciona fecha de inicio y de fin.', true);
+  if (desde > hasta) return showToast('La fecha "Desde" no puede ser posterior a "Hasta".', true);
+  state.stockCheck.rango = { preset: 'custom', desde, hasta };
+  document.querySelectorAll('#stockchk-rango-presets [data-rango]').forEach(b => b.classList.remove('active'));
+  if (state.stockCheck.prodId) calcularStockCheck();
+});
+
+document.getElementById('stockchk-orden-aplicar')?.addEventListener('click', () => {
+  const desde = document.getElementById('stockchk-orden-desde').value;
+  const hasta = document.getElementById('stockchk-orden-hasta').value;
+  if (desde === '' || hasta === '') return showToast('Indica el número de pedido inicial y final.', true);
+  if (Number(desde) > Number(hasta)) return showToast('El pedido "Desde" no puede ser mayor al pedido "Hasta".', true);
+  state.stockCheck.ordenDesde = Number(desde);
+  state.stockCheck.ordenHasta = Number(hasta);
+  if (state.stockCheck.prodId) calcularStockCheck();
+});
+
+/* ------------------------------ Cálculo principal ------------------------------ */
+async function calcularStockCheck(){
+  const prod = state.productos.find(p => String(p.id) === String(state.stockCheck.prodId));
+  if (!prod) return;
+  const resultados = document.getElementById('stockchk-resultados');
+  const listaEl = document.getElementById('stockchk-pedidos-list');
+  if (!resultados || !listaEl) return;
+  resultados.hidden = false;
+  listaEl.innerHTML = 'Cargando…';
+  setText('stockchk-stock-actual', prod.stock ?? 0);
+
+  let pedidos;
+  try{
+    pedidos = await cargarStockCheckPedidos();
+  }catch(e){
+    showToast('Error cargando pedidos: ' + e.message, true);
+    listaEl.innerHTML = `<p class="hint">No se pudieron cargar los pedidos.</p>`;
+    return;
+  }
+
+  let pedidosEnRango = [];
+  let etiquetaRango = '—';
+  let dias = 1;
+  let rangoValido = true;
+
+  if (state.stockCheck.modo === 'pedidos'){
+    const desde = state.stockCheck.ordenDesde;
+    const hasta = state.stockCheck.ordenHasta;
+    if (desde === null || hasta === null || Number.isNaN(desde) || Number.isNaN(hasta)){
+      rangoValido = false;
+      etiquetaRango = 'Indica un rango de pedidos y pulsa "Aplicar rango"';
+    } else {
+      pedidosEnRango = pedidos.filter(p => {
+        const num = Number(getPedidoNumero(p));
+        return !Number.isNaN(num) && num >= desde && num <= hasta;
+      });
+      etiquetaRango = `Pedidos #${desde} a #${hasta}`;
+      const fechasValidas = pedidosEnRango.map(p => new Date(getPedidoFecha(p))).filter(f => !isNaN(f));
+      if (fechasValidas.length){
+        const min = new Date(Math.min(...fechasValidas));
+        const max = new Date(Math.max(...fechasValidas));
+        dias = Math.max(1, Math.round((max - min) / 86400000) + 1);
+      }
+    }
+  } else {
+    const { desde, hasta, etiqueta } = calcularRangoFechasStockCheck();
+    etiquetaRango = etiqueta;
+    if (desde && hasta){
+      pedidosEnRango = pedidos.filter(p => {
+        const fecha = new Date(getPedidoFecha(p));
+        return !isNaN(fecha) && fecha >= desde && fecha <= hasta;
+      });
+      dias = Math.max(1, Math.round((hasta - desde) / 86400000) + 1);
+    }
+  }
+
+  if (!rangoValido){
+    setText('stockchk-rango-label', etiquetaRango);
+    setText('stockchk-total-unidades', '—');
+    setText('stockchk-total-pedidos', '—');
+    setText('stockchk-salida-diaria', '—');
+    setText('stockchk-dias-sub', '—');
+    setText('stockchk-autonomia', '—');
+    listaEl.innerHTML = `<p class="hint">Indica un rango de números de pedido y pulsa "Aplicar rango".</p>`;
+    return;
+  }
+
+  const conProducto = pedidosEnRango
+    .map(p => ({ p, cantidad: cantidadProductoEnPedido(p, prod) }))
+    .filter(x => x.cantidad > 0)
+    .sort((a, b) => new Date(getPedidoFecha(b.p)) - new Date(getPedidoFecha(a.p)));
+
+  const totalUnidades = conProducto.reduce((acc, x) => acc + x.cantidad, 0);
+  const salidaDiaria = totalUnidades / dias;
+  const stockActual = Number(prod.stock ?? 0);
+  const autonomiaTxt = salidaDiaria > 0
+    ? `≈ ${(stockActual / salidaDiaria).toFixed(1)} días`
+    : (stockActual > 0 ? 'Sin salidas en el rango' : '—');
+
+  setText('stockchk-total-unidades', totalUnidades);
+  setText('stockchk-rango-label', etiquetaRango);
+  setText('stockchk-total-pedidos', conProducto.length);
+  setText('stockchk-stock-actual', stockActual);
+  setText('stockchk-salida-diaria', salidaDiaria.toFixed(2) + ' und/día');
+  setText('stockchk-dias-sub', `sobre ${dias} día${dias === 1 ? '' : 's'} en el rango`);
+  setText('stockchk-autonomia', autonomiaTxt);
+
+  const autonomiaEl = document.getElementById('stockchk-autonomia');
+  if (autonomiaEl){
+    const critico = prod.aplicar_stock && salidaDiaria > 0 && (stockActual / salidaDiaria) <= 3;
+    autonomiaEl.classList.toggle('stockchk-diff-warn', critico);
+  }
+
+  listaEl.innerHTML = conProducto.length ? conProducto.map(({ p, cantidad }) => `
+    <div class="mini-row" data-stockchk-pedido="${escapeHtml(getOriginalPedidoId(p))}" style="cursor:pointer;">
+      <span class="k">${escapeHtml(getPedidoFecha(p) ? new Date(getPedidoFecha(p)).toLocaleDateString() : '—')} · Orden ${escapeHtml(getPedidoNumero(p) || '—')} · ${escapeHtml(p.nombre_comprador || '—')}</span>
+      <span class="v">${cantidad} und.</span>
+    </div>`).join('') : `<p class="hint">No se encontraron pedidos con este producto en el rango seleccionado.</p>`;
+
+  listaEl.querySelectorAll('[data-stockchk-pedido]').forEach(row => {
+    row.addEventListener('click', () => {
+      const item = conProducto.find(x => getOriginalPedidoId(x.p) === row.dataset.stockchkPedido);
+      if (item) showPedidoDetalle(item.p);
+    });
+  });
+}

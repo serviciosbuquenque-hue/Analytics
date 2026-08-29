@@ -1724,3 +1724,22 @@ textarea{ resize: vertical; }
   .usr-stat-card strong{ font-size: 15px; word-break: break-word; }
   #view-usuarios .seg-tab{ font-size: 11px; padding: 6px 7px; }
 }
+
+/* ===================== Modal "Ventas por producto" ===================== */
+.stockchk-selected{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  margin-top:10px; padding:10px 12px; background: var(--surface-2);
+  border:1px solid var(--border); border-radius: var(--radius-s); flex-wrap:wrap;
+}
+.stockchk-selected-info{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+.stockchk-selected-info strong{ font-size:14px; overflow:hidden; text-overflow:ellipsis; }
+.stockchk-selected-info span{ font-size:12px; color: var(--text-faint); }
+#modal-stock-check .autocomplete-wrap{ min-width:0; }
+#modal-stock-check .autocomplete-wrap input{ width:100%; }
+#stockchk-mode-tabs{ margin-bottom:14px; }
+#stockchk-autonomia.stockchk-diff-warn{ color: var(--red); }
+
+@media (max-width: 640px){
+  .stockchk-selected{ flex-direction:column; align-items:stretch; }
+  .stockchk-selected .btn{ width:100%; justify-content:center; }
+}
