@@ -251,17 +251,25 @@ code{ font-family: var(--font-mono); background: var(--surface-3); padding: .1em
 .stat-card-clickable:hover{ border-color: var(--accent); }
 
 .resu-filtro-box{ padding: 16px 16px 14px; }
-.resu-filtro-row{ display:flex; flex-wrap:wrap; gap:10px; align-items:flex-start; justify-content:space-between; }
+.resu-filtro-row{
+  display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px 16px;
+}
 .resu-filtro-row > *{ min-width:0; }
-.resu-filtro-custom{ display:grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap:8px; align-items:end; flex:1 1 300px; max-width: 100%; }
-.resu-filtro-custom label{ display:flex; flex-direction:column; gap:3px; font-size:10px; color: var(--text-muted); text-transform:uppercase; letter-spacing:.04em; }
+.resu-filtro-custom{
+  display:grid; grid-template-columns: repeat(2, minmax(0, 150px)) auto; gap:8px;
+  align-items:end; flex:0 1 auto; max-width:100%;
+}
+.resu-filtro-custom label{
+  display:flex; flex-direction:column; gap:3px; font-size:10px; color: var(--text-muted);
+  text-transform:uppercase; letter-spacing:.04em; min-width:0;
+}
 .resu-filtro-custom input[type="date"]{
   width:100%; background: var(--surface-2); border:1px solid var(--border); border-radius: var(--radius-s);
   padding: 7px 8px; color: var(--text); font-family: var(--font-body); font-size: 12px;
 }
-.resu-filtro-custom .btn{ justify-content:center; width:100%; max-width: 150px; padding: 7px 10px; font-size: 12px; }
+.resu-filtro-custom .btn{ justify-content:center; padding: 7px 14px; font-size: 12px; white-space:nowrap; }
 .resu-filtro-box .seg-tabs{ margin-top:0; flex-wrap:wrap; overflow-x:visible; padding-bottom:0; gap:6px; }
-.resu-filtro-box .seg-tab{ padding: 7px 10px; font-size: 12px; }
+.resu-filtro-box .seg-tab{ padding: 7px 10px; font-size: 12px; white-space:nowrap; }
 
 .umbral-field{ display:flex; align-items:center; gap:8px; font-size:12px; color: var(--text-muted); white-space:nowrap; }
 .umbral-field input{
@@ -1227,7 +1235,7 @@ tbody tr:hover td{ background: var(--surface-2); }
    ============================================================ */
 .modal-backdrop{
   display:none; position:fixed; inset:0; background: rgba(4,5,9,.65); z-index: 100;
-  align-items:flex-start; justify-content:center; padding: 40px 16px; overflow-y:auto;
+  padding: 24px 16px; overflow-y:auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(158, 175, 203, 0.72) rgba(19, 22, 31, 0.5);
   -webkit-overflow-scrolling: touch;
@@ -1246,8 +1254,11 @@ tbody tr:hover td{ background: var(--surface-2); }
 }
 .modal-backdrop.open{ display:flex; }
 .modal{
+  margin:auto;
   background: var(--surface); border:1px solid var(--border); border-radius: var(--radius-l);
-  width:100%; max-width: 650px; max-height: calc(100vh - 80px); display:flex; flex-direction:column;
+  width:100%; max-width: 650px;
+  max-height: calc(100vh - 48px); max-height: calc(100dvh - 48px);
+  display:flex; flex-direction:column;
   box-shadow: var(--shadow-l);
 }
 .modal-header{ display:flex; align-items:center; justify-content:space-between; padding: 18px 20px; border-bottom:1px solid var(--border); gap:12px; }
@@ -1378,16 +1389,18 @@ textarea{ resize: vertical; }
 .autocomplete-wrap{ position:relative; min-width:140px; }
 .autocomplete-wrap .pedido-edit-product-input{ width:100%; }
 .autocomplete-list{
-  position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:80;
+  position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:1000;
   background: var(--surface-3); border:1px solid var(--border); border-radius: var(--radius-s);
-  box-shadow: var(--shadow-l); max-height:220px; overflow-y:auto; padding:4px;
+  box-shadow: var(--shadow-l); max-height:min(320px, 46vh); overflow-y:auto; padding:4px;
 }
 .autocomplete-item{
-  display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%;
-  background:none; border:none; color: var(--text); font-size:12.5px; text-align:left;
-  padding:8px 9px; border-radius:6px; cursor:pointer;
+  display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%;
+  background:none; border:none; color: var(--text); font-size:13px; text-align:left;
+  padding:11px 11px; border-radius:8px; cursor:pointer; min-height:44px;
 }
-.autocomplete-item-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.autocomplete-item-name{
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;
+}
 .autocomplete-item-price{ color: var(--text-faint); font-family: var(--font-mono); flex-shrink:0; }
 .autocomplete-item:hover, .autocomplete-item.active{ background: var(--surface-2); color: var(--accent); }
 .autocomplete-empty{ padding:9px; font-size:12.5px; color: var(--text-faint); }
@@ -1423,7 +1436,7 @@ textarea{ resize: vertical; }
   padding: 12px 18px; border-radius: var(--radius-s); font-size:13px;
   opacity:0; transform: translateY(10px); pointer-events:none;
   transition: opacity .2s ease, transform .2s ease;
-  z-index: 200; max-width: 320px; border-left: 3px solid var(--blue);
+  z-index: 100000; max-width: 320px; border-left: 3px solid var(--blue);
   box-shadow: var(--shadow-l);
 }
 .toast.show{ opacity:1; transform:none; }
@@ -1439,9 +1452,9 @@ textarea{ resize: vertical; }
   .panel-grid{ grid-template-columns: 1fr; }
   .view-header{ display:flex; flex-direction:column; gap:14px; }
   .header-actions{ width:100%; justify-content:flex-start; }
-  .resu-filtro-row{ flex-direction:column; align-items:stretch; }
-  .resu-filtro-custom{ grid-template-columns: 1fr 1fr; }
-  .resu-filtro-custom .btn{ max-width:none; }
+  .resu-filtro-row{ flex-direction:column; align-items:stretch; gap:12px; }
+  .resu-filtro-custom{ grid-template-columns: 1fr 1fr; max-width:none; }
+  .resu-filtro-custom .btn{ width:100%; grid-column: 1 / -1; }
 }
 
 /* Punto donde el sidebar se convierte en drawer y aparece el topbar
@@ -1628,9 +1641,9 @@ textarea{ resize: vertical; }
   .panel-box{ padding: 14px; }
   .content{ padding: 14px 14px 50px; }
   .resu-filtro-box{ padding: 12px; }
-  .resu-filtro-row{ gap:8px; }
-  .resu-filtro-custom{ display: flex; flex: auto; flex-wrap: wrap; justify-content: space-between; gap:7px; }
-  .resu-filtro-custom .btn{ max-width:none; padding: 8px 10px; }
+  .resu-filtro-row{ gap:10px; }
+  .resu-filtro-custom{ grid-template-columns: 1fr 1fr; max-width:none; }
+  .resu-filtro-custom .btn{ width:100%; grid-column: 1 / -1; padding: 8px 10px; }
   .resu-filtro-box .seg-tabs{ gap:6px; }
   .resu-filtro-box .seg-tab{ padding: 6px 9px; font-size: 11.5px; }
   .sales-chart{ min-height: 220px; padding: 14px; gap: 14px; }
@@ -1660,9 +1673,10 @@ textarea{ resize: vertical; }
   /* Modal casi de borde a borde, con altura ajustada al viewport real
      de móviles (evita el salto por la barra de direcciones de iOS/Android)
      y soporte para el "notch"/home-indicator vía safe-area. */
-  .modal-backdrop{ padding: 0; align-items:flex-end; }
+  .modal-backdrop{ padding: 0; align-items:flex-end; justify-content:center; }
   .modal{
-    width: 100%; max-width: 100%; max-height: 92vh; max-height: 92dvh;
+    width: 100%; max-width: 100%; max-height: 90vh; max-height: 90dvh;
+    min-height: min(58vh, 480px);
     border-radius: var(--radius-l) var(--radius-l) 0 0;
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
@@ -1726,6 +1740,13 @@ textarea{ resize: vertical; }
 }
 
 /* ===================== Modal "Ventas por producto" ===================== */
+/* En PC se le da una altura mínima para que no se vea "chiquito" cuando solo
+   hay un producto seleccionado o la lista aún está vacía; igualmente crece
+   conforme el contenido lo requiera. */
+#modal-stock-check .modal{ min-height: min(560px, 84vh); }
+#modal-stock-check .modal-body{ flex:1; }
+#modal-stock-check .modal-section{ flex:1; justify-content:flex-start; }
+#modal-stock-check .modal-section:last-child{ justify-content:flex-start; }
 .stockchk-selected{
   display:flex; align-items:center; justify-content:space-between; gap:10px;
   margin-top:10px; padding:10px 12px; background: var(--surface-2);
@@ -1736,7 +1757,11 @@ textarea{ resize: vertical; }
 .stockchk-selected-info span{ font-size:12px; color: var(--text-faint); }
 #modal-stock-check .autocomplete-wrap{ min-width:0; }
 #modal-stock-check .autocomplete-wrap input{ width:100%; }
-#modal-stock-check .autocomplete-list{ max-height:180px; }
+#modal-stock-check .autocomplete-list{ max-height:min(320px, 48vh); }
+/* Nombres largos de producto: en vez de truncarse con ellipsis, se permiten
+   envolver en varias líneas para que "quepan bien" dentro del dropdown. */
+#modal-stock-check .autocomplete-item{ align-items:flex-start; }
+#modal-stock-check .autocomplete-item-name{ white-space:normal; line-height:1.35; padding-top:2px; }
 #stockchk-autonomia.stockchk-diff-warn{ color: var(--red); }
 
 /* -------------------------------------------------------------------------
@@ -1770,14 +1795,16 @@ textarea{ resize: vertical; }
 }
 #stockchk-modo-fecha .seg-tabs::before, #stockchk-modo-fecha .seg-tabs::after{ display:none; }
 #stockchk-modo-fecha .seg-tab{ padding: 7px 10px; font-size: 12px; }
-#stockchk-modo-fecha .resu-filtro-custom{ max-width:none; }
-#stockchk-modo-fecha .resu-filtro-custom .btn{ max-width:none; }
+#stockchk-modo-fecha .resu-filtro-custom{ grid-template-columns: 1fr 1fr auto; max-width:none; }
+#stockchk-modo-fecha .resu-filtro-custom .btn{ width:100%; }
 
 #stockchk-modo-pedidos .resu-filtro-custom{ max-width:none; }
 #stockchk-modo-pedidos .resu-filtro-custom .btn{ max-width:none; }
 #stockchk-modo-pedidos .hint{ margin-top:8px; }
 
 @media (max-width: 640px){
+  #modal-stock-check .modal{ min-height: min(70vh, 560px); }
+  #modal-stock-check .modal-section{ flex:0 0 auto; }
   .stockchk-selected{ flex-direction:column; align-items:stretch; }
   .stockchk-selected .btn{ width:100%; justify-content:center; }
   #stockchk-mode-tabs{ gap:6px; margin-bottom:14px; }

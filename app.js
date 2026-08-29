@@ -547,7 +547,17 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-function openModal(id){ document.getElementById(id).classList.add('open'); }
+// Contador para apilar modales (ej. abrir un pedido desde dentro del modal
+// de "Ventas por producto"). Todos los .modal-backdrop comparten z-index:100,
+// así que sin esto el modal recién abierto quedaba DETRÁS del que ya estaba
+// abierto en el DOM. Con este contador, cada modal abierto sube por encima.
+let modalZCounter = 110;
+function openModal(id){
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.zIndex = String(modalZCounter++);
+  el.classList.add('open');
+}
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 document.querySelectorAll('[data-close]').forEach(el => {
   el.addEventListener('click', () => closeModal(el.dataset.close));
@@ -555,6 +565,35 @@ document.querySelectorAll('[data-close]').forEach(el => {
 document.querySelectorAll('.modal-backdrop').forEach(el => {
   el.addEventListener('click', (e) => { if (e.target === el) el.classList.remove('open'); });
 });
+
+/* Modales en móvil: la hoja inferior (bottom-sheet) queda anclada abajo y, al
+   abrirse el teclado virtual, algunos campos quedan ocultos detrás del teclado
+   y el modal "parece que no se expande". Este handler desplaza únicamente el
+   contenido del modal (modal-body) para revelar el campo enfocado, sin mover la
+   página de fondo. */
+(function initModalMobileFocus(){
+  const small = () => window.matchMedia && window.matchMedia('(max-width: 640px)').matches;
+  function revealFocused(target){
+    if (!small()) return;
+    const body = target.closest && target.closest('.modal-body');
+    if (!body) return;
+    const t = target.getBoundingClientRect();
+    const c = body.getBoundingClientRect();
+    if (t.bottom > c.bottom){
+      body.scrollTop += t.bottom - c.bottom + 16;
+    } else if (t.top < c.top){
+      body.scrollTop -= c.top - t.top + 16;
+    }
+  }
+  document.addEventListener('focusin', (e) => {
+    const el = e.target;
+    if (!el || typeof el.matches !== 'function') return;
+    if (!el.matches('input, textarea, select')) return;
+    const bd = (el.closest && el.closest('.modal-backdrop')) || null;
+    if (!bd || !bd.classList.contains('open')) return;
+    setTimeout(() => revealFocused(el), 140);
+  });
+})();
 
 /* ------------------------------- Conexión -------------------------------- */
 
@@ -3725,6 +3764,17 @@ document.getElementById('stockchk-clear')?.addEventListener('click', () => selec
         </button>`).join('')
       : `<div class="autocomplete-empty">Sin coincidencias</div>`;
     lista.hidden = false;
+// Asegurar que el dropdown agrandado quede completamente visible dentro
+    // del modal-body (que scrollea): si sobresale por abajo, lo llevamos a la
+    // vista automáticamente para que no quede recortado por el borde del panel.
+    const bdMod = lista.closest('.modal-body');
+    if (bdMod && typeof bdMod.scrollTo === 'function'){
+      const lr = lista.getBoundingClientRect();
+      const br = bdMod.getBoundingClientRect();
+      if (lr.bottom > br.bottom){
+        bdMod.scrollTo({ top: bdMod.scrollTop + (lr.bottom - br.bottom) + 12, behavior: 'smooth' });
+      }
+    }
   };
 
   input.addEventListener('focus', mostrarSugerencias);
