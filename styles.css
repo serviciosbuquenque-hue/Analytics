@@ -969,7 +969,7 @@ svg.chart-hovering .flow-node:not(.is-active){ opacity: .35; }
 .pack-card-category{ color: var(--text-faint); font-size: 11px; margin: 6px 0 0; }
 .pack-card-desc{
   color: var(--text-muted); font-size: 12.5px; line-height: 1.5;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-clamp: 2;
 }
 .pack-card-price{ display:flex; align-items:baseline; gap: 8px; }
 .price-old{ color: var(--text-faint); font-size: 13px; text-decoration: line-through; }
