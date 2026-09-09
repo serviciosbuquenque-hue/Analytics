@@ -218,6 +218,8 @@
   <!-- Main -->
   <div class="main">
 
+    <div id="offline-banner" class="offline-banner" hidden>⚠ Sin conexión — mostrando los últimos datos guardados.</div>
+
     <header class="topbar">
       <button id="menu-btn" class="icon-btn" aria-label="Abrir menú">☰</button>
       <h1 id="topbar-title">Panel</h1>
@@ -559,6 +561,13 @@
         <div class="header-actions">
           <input type="search" id="pedidos-search" class="search" placeholder="Buscar por comprador, teléfono u orden...">
           <button class="btn btn-ghost" id="pedidos-refresh">↻ Actualizar</button>
+          <button class="btn btn-ghost" id="pedidos-export-csv">⬇ Exportar CSV</button>
+        </div>
+        <div class="seg-tabs" id="pedidos-filtro-fecha">
+          <button class="seg-tab active" data-pfiltro="todos">Todos</button>
+          <button class="seg-tab" data-pfiltro="hoy">Hoy</button>
+          <button class="seg-tab" data-pfiltro="semana">Esta semana</button>
+          <button class="seg-tab" data-pfiltro="mes">Este mes</button>
         </div>
         <div class="seg-tabs" id="pedidos-tabs">
           <button class="seg-tab active" data-ptab="nuevos">Nuevos <span class="seg-tab-count" id="tab-count-nuevos">0</span></button>
@@ -605,6 +614,16 @@
           <button class="seg-tab" data-tab="completado">Completados <span class="seg-tab-count" id="seg-count-completado">0</span></button>
         </div>
         <div class="view-subheader">Pedidos en seguimiento: aquí se controla el estado y la evolución del pedido.</div>
+        <div class="resu-filtro-custom" style="grid-template-columns:auto;max-width:220px;margin:8px 0 4px;">
+          <label>Ordenar por
+            <select id="seg-sort">
+              <option value="fecha_desc">Más reciente primero</option>
+              <option value="fecha_asc">Más antiguo primero</option>
+              <option value="total_desc">Mayor total</option>
+              <option value="total_asc">Menor total</option>
+            </select>
+          </label>
+        </div>
         <div class="table-wrap">
           <table>
             <thead>
@@ -673,6 +692,7 @@
         <div class="header-actions" style="margin-bottom:14px;">
           <input type="search" id="cli-search" class="search" placeholder="Buscar cliente por nombre, teléfono o correo...">
           <button class="btn btn-ghost" id="cli-refresh">↻ Actualizar</button>
+          <button class="btn btn-ghost" id="cli-export-csv">⬇ Exportar CSV</button>
         </div>
         <div class="usr-panel">
           <div class="usr-summary-grid">

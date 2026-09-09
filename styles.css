@@ -8,7 +8,7 @@
   --surface-3: #212636;
   --border: #262c3d;
   --text: #e9ecf4;
-  --text-muted: #8790a6;
+  --text-muted: #9aa3ba;
   --text-faint: #545c72;
 
   --accent: #e42e2e;
@@ -240,7 +240,7 @@ code{ font-family: var(--font-mono); background: var(--surface-3); padding: .1em
 }
 .stat-card.accent::before{ background-image: repeating-linear-gradient(90deg, var(--accent) 0 6px, transparent 6px 12px); }
 .stat-label{ font-size:12px; color: var(--text-muted); text-transform:uppercase; letter-spacing:.06em; }
-.stat-value{ font-family: var(--font-mono); font-size: 27px; font-weight:600; }
+.stat-value{ font-family: var(--font-mono); font-size: 32px; font-weight:700; letter-spacing:-.01em; line-height:1.15; }
 .stat-card.accent .stat-value{ color: var(--accent); }
 .stat-value.growth-positive{ color: var(--teal); }
 .stat-value.growth-negative{ color: var(--red); }
@@ -264,6 +264,10 @@ code{ font-family: var(--font-mono); background: var(--surface-3); padding: .1em
   text-transform:uppercase; letter-spacing:.04em; min-width:0;
 }
 .resu-filtro-custom input[type="date"]{
+  width:100%; background: var(--surface-2); border:1px solid var(--border); border-radius: var(--radius-s);
+  padding: 7px 8px; color: var(--text); font-family: var(--font-body); font-size: 12px;
+}
+.resu-filtro-custom select{
   width:100%; background: var(--surface-2); border:1px solid var(--border); border-radius: var(--radius-s);
   padding: 7px 8px; color: var(--text); font-family: var(--font-body); font-size: 12px;
 }
@@ -1002,7 +1006,31 @@ thead th{
 tbody td{ padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; color: var(--text); }
 tbody tr:last-child td{ border-bottom:none; }
 tbody tr:hover td{ background: var(--surface-2); }
-.empty{ padding: 30px; text-align:center; color: var(--text-faint); }
+.empty{ padding: 40px 20px; text-align:center; color: var(--text-faint); }
+.empty::before{
+  content:"🗂️"; display:block; font-size: 28px; margin-bottom:10px; opacity:.55;
+  filter: grayscale(.2);
+}
+.empty::after{
+  content:"Cuando haya datos, van a aparecer acá."; display:block; font-size:11.5px;
+  color: var(--text-faint); opacity:.7; margin-top:4px;
+}
+
+/* Micro-feedback: pulso breve al guardar un cambio en una fila */
+@keyframes rowSavedPulse{
+  0%{ background: rgba(52,211,192,.28); }
+  100%{ background: transparent; }
+}
+tr.row-saved-flash{ animation: rowSavedPulse 1000ms ease-out; }
+
+/* Banner de "sin conexión" */
+.offline-banner{
+  position: sticky; top:0; z-index: 40; display:flex; align-items:center; justify-content:center;
+  gap:8px; padding:8px 14px; font-size:12.5px; font-weight:600; text-align:center;
+  background: linear-gradient(90deg, rgba(240,84,106,.22), rgba(228,46,46,.22));
+  color: #ffd7dc; border-bottom: 1px solid rgba(240,84,106,.4);
+}
+.offline-banner[hidden]{ display:none; }
 
 #view-packs table th:first-child,
 #view-packs tbody td:first-child {
@@ -1224,6 +1252,9 @@ tbody tr:hover td{ background: var(--surface-2); }
 #view-usuarios table{ font-size: 12.5px; }
 #view-usuarios thead th{ padding: 10px 11px; font-size: 10px; }
 #view-pedidos tbody td{ padding: 9px 11px; }
+.seg-grupo-row td{ background: rgba(255,185,98,.10); color:#f0ba54; font-weight:700; font-size:12px; padding:8px 14px; border-bottom:1px solid var(--border); white-space:normal; word-break:break-word; }
+.seg-grupo-icon{ margin-right:2px; }
+.seg-agrupado td{ border-left:2px solid #f0ba54; }
 #view-pedidos tbody tr{ transition: background .12s ease, transform .12s ease; }
 #view-pedidos tbody tr:hover{ transform: translateY(-1px); }
 #view-pedidos .row-actions{ gap: 4px; }
@@ -1560,6 +1591,31 @@ textarea{ resize: vertical; }
   #view-pedidos .seg-tab {
     font-size: 12px;
     padding: 7px 5px;
+  }
+
+  #view-pedidos tbody tr.seg-grupo-row {
+    display: block;
+    grid-template-columns: none;
+    background: rgba(255,185,98,.10);
+    border: 1px solid rgba(240,186,84,.35);
+    border-radius: var(--radius-m);
+    padding: 8px 12px;
+    margin-bottom: 6px;
+    box-shadow: none;
+  }
+  #view-pedidos tbody tr.seg-grupo-row td {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: none;
+    font-size: 11.5px;
+    line-height: 1.4;
+  }
+  #view-pedidos tbody tr.seg-agrupado {
+    border-left: 3px solid #f0ba54;
+  }
+  #view-pedidos tbody tr.seg-agrupado td {
+    border-left: none;
   }
 
   #view-usuarios .seg-tab {

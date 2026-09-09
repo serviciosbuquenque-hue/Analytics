@@ -91,12 +91,19 @@ async function apiFetch(path, options = {}){
     throw new Error('API URL no configurada');
   }
   const base = state.apiUrl.replace(/\/$/, '');
-  const res = await fetch(base + path, {
-    credentials: 'include',
-    cache: 'no-store',
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...authHeaders(), ...(options.headers || {}) }
-  });
+  let res;
+  try {
+    res = await fetch(base + path, {
+      credentials: 'include',
+      cache: 'no-store',
+      ...options,
+      headers: { 'Content-Type': 'application/json', ...authHeaders(), ...(options.headers || {}) }
+    });
+  } catch (networkErr) {
+    setOfflineBanner(true);
+    throw new Error('Sin conexión con el backend. Verifica tu internet.');
+  }
+  setOfflineBanner(false);
   if (res.status === 401){
     // La sesión no existe o expiró: ocultar la app y volver a pedir login.
     setAuthToken(null);
@@ -112,6 +119,14 @@ async function apiFetch(path, options = {}){
   }
   return data;
 }
+
+function setOfflineBanner(show){
+  const banner = document.getElementById('offline-banner');
+  if (!banner) return;
+  banner.hidden = !show;
+}
+window.addEventListener('offline', () => setOfflineBanner(true));
+window.addEventListener('online', () => setOfflineBanner(false));
 
 function showToast(msg, isError = false){
   const t = document.getElementById('toast');
@@ -945,8 +960,8 @@ function renderProductos(){
     const imgUrl = cloudinaryUrl((p.imagenes || [])[0], 'products', 'thumb');
     const estado = estadoStockProducto(p);
     const available = p.disponibilidad !== false;
-    const stockPill = estado === 'sin' ? `<span class="pill pill-danger">Sin stock</span>` : estado === 'bajo' ? `<span class="pill pill-warn">Stock bajo</span>` : '';
-    const controlPill = p.aplicar_stock ? `<span class="pill pill-control-on">Control stock</span>` : `<span class="pill pill-control-off">Sin control</span>`;
+    const stockPill = estado === 'sin' ? `<span class="pill pill-danger">⚠ Sin stock</span>` : estado === 'bajo' ? `<span class="pill pill-warn">⏳ Stock bajo</span>` : '';
+    const controlPill = p.aplicar_stock ? `<span class="pill pill-control-on">✓ Control stock</span>` : `<span class="pill pill-control-off">— Sin control</span>`;
     const necesitaRevisarActivacion = !available && Number(p.stock || 0) > 0;
     const alertaReactivar = necesitaRevisarActivacion
       ? `<span class="pill pill-alert" title="Se desactivó automáticamente por falta de stock y ya tiene stock repuesto. Ábrelo y guárdalo para reactivarlo.">⚠ Repuesto, sin activar</span>`
@@ -956,7 +971,7 @@ function renderProductos(){
         <div class="product-card-img">
           ${imgUrl ? `<img class="product-thumb" src="${imgUrl}" alt="${escapeHtml(p.nombre)}" loading="lazy" decoding="async">` : `<div class="thumb-placeholder"><i class="fa-solid fa-box-open"></i></div>`}
           ${imgUrl ? `<div class="image-meta">Cargando...</div>` : ''}
-          ${imgUrl ? `<button class="img-detail-btn" title="Ver detalle de imagen" data-img-detail="${p.id}"><i class="fa-solid fa-magnifying-glass"></i></button>` : ''}
+          ${imgUrl ? `<button class="img-detail-btn" title="Ver detalle de imagen" aria-label="Ver detalle de imagen" data-img-detail="${p.id}"><i class="fa-solid fa-magnifying-glass"></i></button>` : ''}
         </div>
         <div class="product-card-body">
           <div class="product-card-title">
@@ -965,7 +980,7 @@ function renderProductos(){
               <p class="product-card-category">${escapeHtml(p.categoria || '—')}</p>
             </div>
             <div class="product-card-statuses">
-              <span class="pill ${available ? 'pill-yes' : 'pill-no'}">${available ? 'Disponible' : 'Oculto'}</span>
+              <span class="pill ${available ? 'pill-yes' : 'pill-no'}">${available ? '✓ Disponible' : '— Oculto'}</span>
               ${controlPill}
               ${alertaReactivar}
             </div>
@@ -1028,7 +1043,7 @@ function renderProductos(){
   requestAnimationFrame(() => updateSegTabsFade(document.getElementById('inv-tabs')));
 }
 
-document.getElementById('inv-search').addEventListener('input', renderProductos);
+document.getElementById('inv-search').addEventListener('input', debounce(renderProductos, 150));
 document.getElementById('inv-new').addEventListener('click', () => openProductoModal(null));
 
 document.querySelectorAll('#inv-tabs [data-itab]').forEach(btn => {
@@ -1281,7 +1296,7 @@ function renderPacks(){
       <div class="pack-card-img">
         ${imgUrl ? `<img class="pack-thumb" src="${imgUrl}" alt="${escapeHtml(p.nombre)}" loading="lazy" decoding="async">` : `<div class="thumb-placeholder"><i class="fa-solid fa-gift"></i></div>`}
         ${imgUrl ? `<div class="image-meta">Cargando...</div>` : ''}
-        ${imgUrl ? `<button class="img-detail-btn" title="Ver detalle de imagen" data-pack-img-detail="${p.id}"><i class="fa-solid fa-magnifying-glass"></i></button>` : ''}
+        ${imgUrl ? `<button class="img-detail-btn" title="Ver detalle de imagen" aria-label="Ver detalle de imagen" data-pack-img-detail="${p.id}"><i class="fa-solid fa-magnifying-glass"></i></button>` : ''}
         <div class="pack-badges">
           ${p.oferta ? `<span class="pack-badge pack-badge-oferta"><i class="fa-solid fa-tag"></i> -${descuento}%</span>` : ''}
           ${p.top ? `<span class="pack-badge pack-badge-top"><i class="fa-solid fa-star"></i> Top</span>` : ''}
@@ -1294,7 +1309,7 @@ function renderPacks(){
             <h3>${escapeHtml(p.nombre)}</h3>
             <p class="pack-card-category">${escapeHtml(p.categoria || 'Pack')}</p>
           </div>
-          <span class="pill ${disponible ? 'pill-yes' : 'pill-no'}">${disponible ? 'Disponible' : 'Oculto'}</span>
+          <span class="pill ${disponible ? 'pill-yes' : 'pill-no'}">${disponible ? '✓ Disponible' : '— Oculto'}</span>
         </div>
         ${p.descripcion ? `<p class="pack-card-desc">${escapeHtml(p.descripcion)}</p>` : ''}
         <div class="pack-card-price">
@@ -1339,7 +1354,7 @@ function renderPacks(){
   requestAnimationFrame(() => updateSegTabsFade(document.getElementById('pack-tabs')));
 }
 
-document.getElementById('pack-search').addEventListener('input', renderPacks);
+document.getElementById('pack-search').addEventListener('input', debounce(renderPacks, 150));
 document.getElementById('pack-new').addEventListener('click', () => openPackModal(null));
 
 document.querySelectorAll('#pack-tabs [data-ptab]').forEach(btn => {
@@ -1542,6 +1557,13 @@ function getPedidoNumero(p){
   return String(p.numero_orden || p.orderNumber || p.order_number || '').trim();
 }
 
+// El número de orden suele venir con prefijo (ej. "BS-246"), así que para
+// comparar rangos numéricos hay que extraer solo los dígitos.
+function getPedidoNumeroValor(p){
+  const digits = getPedidoNumero(p).replace(/\D+/g, '');
+  return digits ? Number(digits) : NaN;
+}
+
 function coincideBusquedaPedido(p, term){
   if (!term) return true;
   const nombre = normalizeText(p.nombre_comprador);
@@ -1596,11 +1618,11 @@ async function loadPedidosSection(){
 }
 
 document.getElementById('pedidos-refresh').addEventListener('click', loadPedidosSection);
-document.getElementById('pedidos-search').addEventListener('input', () => {
+document.getElementById('pedidos-search').addEventListener('input', debounce(() => {
   renderPedidosNuevos();
   renderPedidosGuardados();
   renderPedidosSeguimiento();
-});
+}, 150));
 
 /* -------------------------- Pestañas Nuevos / Guardados / Seguimiento -------------------------- */
 
@@ -1623,7 +1645,7 @@ document.querySelectorAll('#pedidos-tabs .seg-tab').forEach(btn => {
 function renderPedidosNuevos(){
   const term = pedidosSearchTerm();
   const historial = [...state.pedidosNuevos, ...state.pedidosSeguimiento];
-  const list = state.pedidosNuevos.filter(p => coincideBusquedaPedido(p, term));
+  const list = state.pedidosNuevos.filter(p => coincideBusquedaPedido(p, term) && pasaFiltroFechaPedido(p));
 
   const tbody = document.getElementById('nuevos-tbody');
   tbody.innerHTML = '';
@@ -1639,13 +1661,13 @@ function renderPedidosNuevos(){
       <td data-label="Teléfono">${escapeHtml(p.telefono_comprador || '—')}</td>
       <td data-label="Dirección">${escapeHtml(p.direccion_envio || '—')}</td>
       <td data-label="Total">$${Number(p.precio_compra_total || 0).toFixed(2)}</td>
-      <td data-label="Cliente">${reincidente ? `<span class="pill pill-warn">Ya compró</span>` : `<span class="pill pill-yes">Nuevo</span>`}</td>
+      <td data-label="Cliente">${reincidente ? `<span class="pill pill-warn">⏳ Ya compró</span>` : `<span class="pill pill-yes">✓ Nuevo</span>`}</td>
       <td data-label="Acciones">
         <div class="row-actions">
-          <button class="icon-btn" title="Ver detalle" data-view="${p.id}">👁</button>
-          ${reincidente ? `<button class="icon-btn" title="Ver pedido anterior de este cliente" data-prev="${p.id}">🕓</button>` : ''}
+          <button class="icon-btn" title="Ver detalle" aria-label="Ver detalle del pedido" data-view="${p.id}">👁</button>
+          ${reincidente ? `<button class="icon-btn" title="Ver pedido anterior de este cliente" aria-label="Ver pedido anterior de este cliente" data-prev="${p.id}">🕓</button>` : ''}
           <button class="btn btn-primary btn-small" data-assign="${p.id}">Dar Seguimiento</button>
-          <button class="icon-btn" title="Eliminar" data-del="${p.id}">🗑</button>
+          <button class="icon-btn" title="Eliminar" aria-label="Eliminar pedido nuevo" data-del="${p.id}">🗑</button>
         </div>
       </td>`;
     tbody.appendChild(tr);
@@ -1663,7 +1685,7 @@ function renderPedidosNuevos(){
 
 function renderPedidosGuardados(){
   const term = pedidosSearchTerm();
-  const list = state.pedidosSeguimiento.filter(p => coincideBusquedaPedido(p, term));
+  const list = state.pedidosSeguimiento.filter(p => coincideBusquedaPedido(p, term) && pasaFiltroFechaPedido(p));
   const tbody = document.getElementById('guardados-tbody');
   tbody.innerHTML = '';
   document.getElementById('guardados-empty').hidden = list.length !== 0;
@@ -1678,7 +1700,7 @@ function renderPedidosGuardados(){
       <td data-label="Comprador">${escapeHtml(p.nombre_comprador || '—')}</td>
       <td data-label="Teléfono">${escapeHtml(p.telefono_comprador || '—')}</td>
       <td data-label="Total">$${Number(p.precio_compra_total || 0).toFixed(2)}</td>
-      <td data-label="Ya Compró">${reincidente ? `<span class="pill pill-warn">Sí</span>` : `<span class="pill pill-no">No</span>`}</td>
+      <td data-label="Ya Compró">${reincidente ? `<span class="pill pill-warn">⏳ Sí</span>` : `<span class="pill pill-no">— No</span>`}</td>
       <td data-label="Estado"><span class="pill ${marcador.cls}">${marcador.text}</span></td>`;
     tbody.appendChild(tr);
   });
@@ -1731,10 +1753,10 @@ function estadoPedidoKey(p){
   return 'pendiente';
 }
 const MARCADOR = {
-  pendiente:  { text: 'Pendiente',  cls: 'pill-no' },
-  proceso:    { text: 'En proceso', cls: 'pill-warn' },
-  pagado:     { text: 'Pagado',     cls: 'pill-yes' },
-  completado: { text: 'Completado', cls: 'pill-yes' },
+  pendiente:  { text: '⏳ Pendiente',  cls: 'pill-no',   textPlano: 'Pendiente' },
+  proceso:    { text: '⏳ En proceso', cls: 'pill-warn', textPlano: 'En proceso' },
+  pagado:     { text: '✓ Pagado',      cls: 'pill-yes',  textPlano: 'Pagado' },
+  completado: { text: '✓ Completado',  cls: 'pill-yes',  textPlano: 'Completado' },
 };
 
 function isPedidoPagadoNoEntregado(p){
@@ -1747,23 +1769,93 @@ function isPedidoVisibleEnSeguimiento(p){
 
 let segTabActual = 'proceso';
 
-function renderPedidosSeguimiento(){
+// Agrupa pedidos "en proceso" por cliente usando la misma lógica de
+// ordersBelongToSameUser (teléfono, correo o id de usuario), pero de forma
+// transitiva: si A coincide con B y B coincide con C, los 3 quedan en el
+// mismo grupo aunque A y C no compartan directamente el mismo campo
+// (evita duplicar/perder pedidos cuando el teléfono viene guardado con
+// formato distinto, ej. con o sin código de país).
+function agruparPedidosPorCliente(items){
+  const parent = items.map((_, i) => i);
+  function find(i){ while (parent[i] !== i){ parent[i] = parent[parent[i]]; i = parent[i]; } return i; }
+  function union(i, j){ const ri = find(i), rj = find(j); if (ri !== rj) parent[ri] = rj; }
+  for (let i = 0; i < items.length; i++){
+    for (let j = i + 1; j < items.length; j++){
+      if (ordersBelongToSameUser(items[i], items[j])) union(i, j);
+    }
+  }
+  const grupos = new Map();
+  items.forEach((p, i) => {
+    const r = find(i);
+    if (!grupos.has(r)) grupos.set(r, []);
+    grupos.get(r).push(p);
+  });
+  return [...grupos.values()];
+}
+
+function renderPedidosSeguimiento(flashId){
   const term = pedidosSearchTerm();
   const historial = [...state.pedidosNuevos, ...state.pedidosSeguimiento];
   const list = state.pedidosSeguimiento.filter(p => {
     if (!isPedidoVisibleEnSeguimiento(p)) return false;
     const key = estadoPedidoKey(p);
     const enPestaña = segTabActual === 'completado' ? key === 'completado' : key !== 'completado';
-    return enPestaña && coincideBusquedaPedido(p, term);
+    return enPestaña && coincideBusquedaPedido(p, term) && pasaFiltroFechaPedido(p);
+  });
+
+  ordenarPedidosSeguimiento(list);
+
+  const pedidosProceso = list.filter(p => estadoPedidoKey(p) === 'proceso');
+  const grupoPorId = new Map();
+  agruparPedidosPorCliente(pedidosProceso).forEach(grupo => {
+    if (grupo.length > 1) grupo.forEach(p => grupoPorId.set(p.id, grupo));
+  });
+
+  // Reordena la lista para que los pedidos de un mismo grupo queden
+  // realmente contiguos: antes solo se insertaba el encabezado al llegar
+  // al primer miembro, pero el resto del grupo seguía en su posición
+  // original dentro de `list`, apareciendo en otro punto de la tabla.
+  const listaIds = new Set(list.map(p => p.id));
+  const listaOrdenada = [];
+  const yaColocados = new Set();
+  list.forEach(p => {
+    if (yaColocados.has(p.id)) return;
+    const grupo = grupoPorId.get(p.id);
+    if (grupo){
+      grupo.filter(g => listaIds.has(g.id)).forEach(g => {
+        if (!yaColocados.has(g.id)){
+          listaOrdenada.push(g);
+          yaColocados.add(g.id);
+        }
+      });
+    } else {
+      listaOrdenada.push(p);
+      yaColocados.add(p.id);
+    }
   });
 
   const tbody = document.getElementById('seg-tbody');
   tbody.innerHTML = '';
   document.getElementById('seg-empty').hidden = list.length !== 0;
 
-  list.forEach(p => {
+  const gruposMostrados = new Set();
+  const trIndexById = new Map();
+
+  listaOrdenada.forEach(p => {
+    const grupo = grupoPorId.get(p.id);
+
+    if (grupo && !gruposMostrados.has(grupo)){
+      gruposMostrados.add(grupo);
+      const total = grupo.reduce((s, g) => s + Number(g.precio_compra_total || 0), 0);
+      const trGrupo = document.createElement('tr');
+      trGrupo.className = 'seg-grupo-row';
+      trGrupo.innerHTML = `<td colspan="9"><span class="seg-grupo-icon">🔗</span> ${escapeHtml(p.nombre_comprador || 'Cliente')} — ${grupo.length} pedidos en proceso — Total: $${total.toFixed(2)}</td>`;
+      tbody.appendChild(trGrupo);
+    }
+
     const reincidente = esClienteReincidente(p, historial);
     const tr = document.createElement('tr');
+    if (grupo) tr.className = 'seg-agrupado';
     const marcador = MARCADOR[estadoPedidoKey(p)];
     tr.innerHTML = `
       <td data-label="Fecha asignación">${escapeHtml(p.fecha_asignacion || '—')}</td>
@@ -1771,7 +1863,7 @@ function renderPedidosSeguimiento(){
       <td data-label="Comprador">${escapeHtml(p.nombre_comprador || '—')}</td>
       <td data-label="Teléfono">${escapeHtml(p.telefono_comprador || '—')}</td>
       <td data-label="Total">$${Number(p.precio_compra_total || 0).toFixed(2)}</td>
-      <td data-label="Ya Compró">${reincidente ? `<span class="pill pill-warn">Sí</span>` : `<span class="pill pill-no">No</span>`}</td>
+      <td data-label="Ya Compró">${reincidente ? `<span class="pill pill-warn">⏳ Sí</span>` : `<span class="pill pill-no">— No</span>`}</td>
       <td data-label="Estados">
         <div class="estado-checks" data-estados="${p.id}">
           ${ESTADO_FIELDS.map(f => {
@@ -1788,11 +1880,12 @@ function renderPedidosSeguimiento(){
       <td data-label="Marcador"><span class="pill ${marcador.cls}">${marcador.text}</span></td>
       <td data-label="Acciones">
         <div class="row-actions">
-          <button class="icon-btn" title="Ver detalle" data-view="${p.id}">👁</button>
-          <button class="icon-btn" title="Eliminar" data-del="${p.id}">🗑</button>
+          <button class="icon-btn" title="Ver detalle" aria-label="Ver detalle del pedido" data-view="${p.id}">👁</button>
+          <button class="icon-btn" title="Eliminar" aria-label="Eliminar pedido en seguimiento" data-del="${p.id}">🗑</button>
         </div>
       </td>`;
     tbody.appendChild(tr);
+    trIndexById.set(p.id, tr);
   });
 
   tbody.querySelectorAll('[data-estados]').forEach(container => {
@@ -1810,8 +1903,108 @@ function renderPedidosSeguimiento(){
   tbody.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => showPedidoDetalle(state.pedidosSeguimiento.find(x => x.id === b.dataset.view))));
   tbody.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => deletePedidoSeguimiento(b.dataset.del)));
 
+  if (flashId && trIndexById.has(flashId)){
+    const trFlash = trIndexById.get(flashId);
+    trFlash.classList.add('row-saved-flash');
+    setTimeout(() => trFlash.classList.remove('row-saved-flash'), 1000);
+  }
+
   actualizarBadgesPedidos();
 }
+
+/* --------------------- Orden y filtro rápido de fecha (Pedidos) --------------------- */
+
+let segSortBy = 'fecha_desc';
+
+function ordenarPedidosSeguimiento(list){
+  const fechaVal = p => { const t = new Date(p.fecha_asignacion || p.fecha_registro_backend || 0).getTime(); return isNaN(t) ? 0 : t; };
+  if (segSortBy === 'fecha_asc') list.sort((a, b) => fechaVal(a) - fechaVal(b));
+  else if (segSortBy === 'fecha_desc') list.sort((a, b) => fechaVal(b) - fechaVal(a));
+  else if (segSortBy === 'total_desc') list.sort((a, b) => Number(b.precio_compra_total || 0) - Number(a.precio_compra_total || 0));
+  else if (segSortBy === 'total_asc') list.sort((a, b) => Number(a.precio_compra_total || 0) - Number(b.precio_compra_total || 0));
+  return list;
+}
+
+const segSortSelect = document.getElementById('seg-sort');
+if (segSortSelect){
+  segSortSelect.addEventListener('change', () => {
+    segSortBy = segSortSelect.value;
+    renderPedidosSeguimiento();
+  });
+}
+
+let pedidosFiltroFecha = 'todos';
+
+function esDeEstaSemana(fechaStr){
+  if (!fechaStr) return false;
+  const f = new Date(fechaStr);
+  if (isNaN(f)) return false;
+  const hoy = new Date();
+  const inicioSemana = new Date(hoy);
+  const diaSemana = (hoy.getDay() + 6) % 7; // lunes = 0
+  inicioSemana.setDate(hoy.getDate() - diaSemana);
+  inicioSemana.setHours(0, 0, 0, 0);
+  const finSemana = new Date(inicioSemana);
+  finSemana.setDate(inicioSemana.getDate() + 7);
+  return f >= inicioSemana && f < finSemana;
+}
+
+function pasaFiltroFechaPedido(p){
+  if (pedidosFiltroFecha === 'todos') return true;
+  const fecha = getPedidoFecha(p);
+  if (pedidosFiltroFecha === 'hoy') return fechaHoy(fecha);
+  if (pedidosFiltroFecha === 'semana') return esDeEstaSemana(fecha);
+  if (pedidosFiltroFecha === 'mes') return esDelMesActual(fecha);
+  return true;
+}
+
+document.querySelectorAll('#pedidos-filtro-fecha .seg-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    pedidosFiltroFecha = btn.dataset.pfiltro;
+    document.querySelectorAll('#pedidos-filtro-fecha .seg-tab').forEach(b => b.classList.toggle('active', b === btn));
+    renderPedidosNuevos();
+    renderPedidosGuardados();
+    renderPedidosSeguimiento();
+  });
+});
+
+/* ------------------------------- Exportar CSV ------------------------------- */
+
+function exportarCSV(headers, rows, filename){
+  const escapeCell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const csv = [headers, ...rows].map(r => r.map(escapeCell).join(',')).join('\r\n');
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  showToast('CSV exportado.');
+}
+
+function exportarPedidosCSV(){
+  const headers = ['Fecha', 'Orden', 'Comprador', 'Teléfono', 'Dirección', 'Total', 'Estado'];
+  const todos = [
+    ...state.pedidosNuevos.map(p => ({ ...p, _estado: 'Nuevo' })),
+    ...state.pedidosSeguimiento.map(p => ({ ...p, _estado: MARCADOR[estadoPedidoKey(p)].textPlano }))
+  ];
+  const rows = todos.map(p => [
+    p.fecha_asignacion || p.fecha_registro_backend || '',
+    getPedidoNumero(p) || '',
+    p.nombre_comprador || '',
+    p.telefono_comprador || '',
+    p.direccion_envio || '',
+    Number(p.precio_compra_total || 0).toFixed(2),
+    p._estado || ''
+  ]);
+  exportarCSV(headers, rows, `pedidos-buquenque-${new Date().toISOString().slice(0, 10)}.csv`);
+}
+
+const btnExportPedidos = document.getElementById('pedidos-export-csv');
+if (btnExportPedidos) btnExportPedidos.addEventListener('click', exportarPedidosCSV);
 
 document.querySelectorAll('#seg-tabs .seg-tab').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -1830,7 +2023,7 @@ async function updateEstadosPedido(id, cambios){
     const idx = state.pedidosSeguimiento.findIndex(p => p.id === id);
     if (idx !== -1) state.pedidosSeguimiento[idx] = normalizePedidoState(pedido);
     showToast('Estado actualizado.');
-    renderPedidosSeguimiento();
+    renderPedidosSeguimiento(id);
   }catch(e){
     showToast('Error actualizando estado: ' + e.message, true);
     renderPedidosSeguimiento(); // revierte el checkbox visualmente si falló
@@ -1981,7 +2174,7 @@ function filaEdicionPedidoHtml(c, idx){
       <td data-label="Cantidad"><input type="number" min="1" step="1" inputmode="numeric" class="pedido-edit-qty" data-idx="${idx}" value="${Number(c.quantity) || 1}"></td>
       <td data-label="Precio unit."><input type="number" min="0" step="0.01" inputmode="decimal" class="pedido-edit-price" data-idx="${idx}" value="${Number(c.unitPrice) || 0}"></td>
       <td class="pedido-edit-subtotal" data-idx="${idx}" data-label="Subtotal">$${subtotal.toFixed(2)}</td>
-      <td data-label=""><button type="button" class="icon-btn" title="Quitar producto" data-remove-row="${idx}"><i class="fa-solid fa-trash-can"></i></button></td>
+      <td data-label=""><button type="button" class="icon-btn" title="Quitar producto" aria-label="Quitar producto de la lista" data-remove-row="${idx}"><i class="fa-solid fa-trash-can"></i></button></td>
     </tr>`;
 }
 
@@ -2222,7 +2415,7 @@ function renderUsuarios(){
       <td>${escapeHtml(u.fecha_hora_entrada || '—')}</td>
       <td>${escapeHtml(u.ip || '—')}</td>
       <td>${escapeHtml(u.pais || '—')}</td>
-      <td>${u.tipo_usuario === 'Recurrente' ? `<span class="pill pill-warn">Recurrente</span>` : `<span class="pill pill-yes">Único</span>`}</td>
+      <td>${u.tipo_usuario === 'Recurrente' ? `<span class="pill pill-warn">⏳ Recurrente</span>` : `<span class="pill pill-yes">✓ Único</span>`}</td>
       <td>${escapeHtml(u.origen || u.fuente_trafico || '—')}</td>
       <td>${escapeHtml(u.navegador || '—')}</td>
       <td>${escapeHtml(u.sistema_operativo || '—')}</td>`;
@@ -2254,11 +2447,11 @@ document.getElementById('usr-load-more')?.addEventListener('click', () => {
     renderUsuarios();
   }
 });
-document.getElementById('usr-search')?.addEventListener('input', (event) => {
+document.getElementById('usr-search')?.addEventListener('input', debounce((event) => {
   state.usuariosQuery = event.target.value;
   state.usuariosPage = 1;
   renderUsuarios();
-});
+}, 150));
 
 /* ------------------------- Pestañas Visitas / Clientes ------------------------- */
 
@@ -2373,6 +2566,22 @@ function renderClientes(){
   setText('cli-ingresos-total', '$' + totalIngresos.toFixed(2));
 }
 
+function exportarClientesCSV(){
+  const headers = ['Cliente', 'Teléfono', 'Correo', 'Pedidos', 'Total gastado', 'Última compra'];
+  const rows = clientesFiltradosActuales.map(c => [
+    c.nombre || '',
+    c.telefono || '',
+    c.correo || '',
+    c.totalPedidos,
+    c.totalGastado.toFixed(2),
+    c.ultimaFecha ? new Date(c.ultimaFecha).toLocaleDateString() : ''
+  ]);
+  exportarCSV(headers, rows, `clientes-buquenque-${new Date().toISOString().slice(0, 10)}.csv`);
+}
+
+const btnExportClientes = document.getElementById('cli-export-csv');
+if (btnExportClientes) btnExportClientes.addEventListener('click', exportarClientesCSV);
+
 document.getElementById('cli-tbody')?.addEventListener('click', (event) => {
   const btn = event.target.closest('[data-cli-ver]');
   const row = event.target.closest('[data-cli-idx]');
@@ -2382,10 +2591,10 @@ document.getElementById('cli-tbody')?.addEventListener('click', (event) => {
   if (cliente) showClienteDetalle(cliente);
 });
 
-document.getElementById('cli-search')?.addEventListener('input', (event) => {
+document.getElementById('cli-search')?.addEventListener('input', debounce((event) => {
   state.clientesQuery = event.target.value;
   renderClientes();
-});
+}, 150));
 document.getElementById('cli-refresh')?.addEventListener('click', loadClientes);
 
 let clienteDetalleActual = null;
@@ -3490,7 +3699,7 @@ async function loadResumen(){
       listaStock.innerHTML = conProblema.length ? conProblema.map(({ p, estado }) => `
         <div class="mini-row">
           <span class="k">${escapeHtml(p.nombre)}</span>
-          <span class="v">${estado === 'sin' ? `<span class="pill pill-danger">Sin stock</span>` : `<span class="pill pill-warn">${p.stock} und.</span>`}</span>
+          <span class="v">${estado === 'sin' ? `<span class="pill pill-danger">⚠ Sin stock</span>` : `<span class="pill pill-warn">⏳ ${p.stock} und.</span>`}</span>
         </div>`).join('') : `<p class="hint">Todo el inventario con control de stock está en buen nivel.</p>`;
     }
 
@@ -3893,7 +4102,7 @@ async function calcularStockCheck(){
       etiquetaRango = 'Indica un rango de pedidos y pulsa "Aplicar rango"';
     } else {
       pedidosEnRango = pedidos.filter(p => {
-        const num = Number(getPedidoNumero(p));
+        const num = getPedidoNumeroValor(p);
         return !Number.isNaN(num) && num >= desde && num <= hasta;
       });
       etiquetaRango = `Pedidos #${desde} a #${hasta}`;
