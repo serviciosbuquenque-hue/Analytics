@@ -962,6 +962,7 @@ function renderProductos(){
     const available = p.disponibilidad !== false;
     const stockPill = estado === 'sin' ? `<span class="pill pill-danger">⚠ Sin stock</span>` : estado === 'bajo' ? `<span class="pill pill-warn">⏳ Stock bajo</span>` : '';
     const controlPill = p.aplicar_stock ? `<span class="pill pill-control-on">✓ Control stock</span>` : `<span class="pill pill-control-off">— Sin control</span>`;
+    const minCompra = Math.max(1, Number(p.cantidad_minima ?? 1) || 1);
     const necesitaRevisarActivacion = !available && Number(p.stock || 0) > 0;
     const alertaReactivar = necesitaRevisarActivacion
       ? `<span class="pill pill-alert" title="Se desactivó automáticamente por falta de stock y ya tiene stock repuesto. Ábrelo y guárdalo para reactivarlo.">⚠ Repuesto, sin activar</span>`
@@ -990,6 +991,7 @@ function renderProductos(){
             <div><span>Stock</span><strong>${p.stock ?? 0} ${stockPill}</strong></div>
             <div><span>Oferta</span><strong>${p.oferta ? `-${p.descuento || 0}%` : 'No'}</strong></div>
             <div><span>Más vendido</span><strong>${p.mas_vendido ? 'Sí' : 'No'}</strong></div>
+            <div><span>Mín. compra</span><strong>${minCompra > 1 ? minCompra : '—'}</strong></div>
           </div>
           <div class="product-card-dates">
             <span><i class="fa-solid fa-plus"></i> ${formatFechaCorta(p.fecha_creacion)}</span>
@@ -1079,6 +1081,7 @@ function openProductoModal(id){
   document.getElementById('prod-precio').value = p ? (p.precio ?? 0) : '';
   document.getElementById('prod-stock').value = p ? (p.stock ?? 0) : '';
   document.getElementById('prod-aplicar-stock').checked = p ? !!p.aplicar_stock : false;
+  document.getElementById('prod-cantidad-minima').value = p ? Math.max(1, Number(p.cantidad_minima ?? 1) || 1) : 1;
   document.getElementById('prod-oferta').checked = p ? !!p.oferta : false;
   const productoDisponible = p
     ? (p.disponibilidad !== undefined ? p.disponibilidad !== false : p.disponible !== false)
@@ -1191,6 +1194,7 @@ document.getElementById('prod-save').addEventListener('click', async () => {
     descripcion: document.getElementById('prod-descripcion').value.trim(),
     precio: Number(document.getElementById('prod-precio').value || 0),
     stock: Number(document.getElementById('prod-stock').value || 0),
+    cantidad_minima: Math.max(1, Math.floor(Number(document.getElementById('prod-cantidad-minima').value || 1)) || 1),
     aplicar_stock: document.getElementById('prod-aplicar-stock').checked,
     descuento,
     oferta,

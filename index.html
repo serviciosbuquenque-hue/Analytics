@@ -765,6 +765,10 @@
           </label>
         </div>
         <label class="check"><input type="checkbox" id="prod-aplicar-stock"> Controlar stock de este producto (descuenta unidades automáticamente al recibir pedidos y permite ver bajo stock / sin stock)</label>
+        <label>Cantidad mínima de compra
+          <input type="number" min="1" step="1" id="prod-cantidad-minima" placeholder="1">
+        </label>
+        <p class="hint">El cliente no podrá añadir menos de esta cantidad al carrito. Déjalo en 1 para no exigir mínimo.</p>
       </div>
 
       <div class="modal-section">
