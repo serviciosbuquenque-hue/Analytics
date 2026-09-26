@@ -1876,3 +1876,122 @@ textarea{ resize: vertical; }
   #stockchk-pedidos-list .mini-row .v{ font-weight:600; }
 }
 
+/* ===================== Fecha de entrega - Indicadores visuales ===================== */
+.entrega-input{
+  width: 100%;
+  min-width: 120px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  padding: 7px 8px;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 12px;
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+.entrega-input:focus{
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(228,46,46,.15);
+}
+.entrega-input.entrega-atrasado{
+  background: rgba(240,84,106,.12);
+  border-color: rgba(240,84,106,.35);
+  color: var(--red);
+}
+.entrega-input.entrega-atrasado:focus{
+  box-shadow: 0 0 0 3px rgba(240,84,106,.18);
+}
+.entrega-input.entrega-hoy{
+  background: rgba(255,185,98,.12);
+  border-color: rgba(255,185,98,.35);
+  color: #f0ba54;
+}
+.entrega-input.entrega-hoy:focus{
+  box-shadow: 0 0 0 3px rgba(255,185,98,.18);
+}
+.entrega-input.entrega-proxima{
+  background: rgba(52,211,192,.12);
+  border-color: rgba(52,211,192,.35);
+  color: var(--teal);
+}
+.entrega-input.entrega-proxima:focus{
+  box-shadow: 0 0 0 3px rgba(52,211,192,.18);
+}
+.entrega-input.entrega-futura{
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text);
+}
+.entrega-input.entrega-sin-fecha{
+  background: var(--surface-3);
+  border-color: var(--border);
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+/* Input en modal de detalle */
+.entrega-input-detalle{
+  width: auto;
+  min-width: 140px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  padding: 7px 10px;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 13px;
+}
+.entrega-input-detalle:focus{
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(228,46,46,.15);
+}
+
+/* Filtro de fecha de entrega - tabs */
+#seg-filtro-entrega .seg-tab{
+  font-size: 11.5px;
+  padding: 6px 10px;
+}
+#seg-filtro-entrega .seg-tab-count{
+  font-size: 10px;
+  padding: 1px 6px;
+}
+
+/* Badge para fecha de entrega en tabla "Pedidos Guardados" (solo lectura) */
+.entrega-badge{
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+.entrega-badge.entrega-atrasado{
+  background: rgba(240,84,106,.14);
+  color: var(--red);
+  border: 1px solid rgba(240,84,106,.28);
+}
+.entrega-badge.entrega-hoy{
+  background: rgba(255,185,98,.14);
+  color: #f0ba54;
+  border: 1px solid rgba(255,185,98,.28);
+}
+.entrega-badge.entrega-proxima{
+  background: rgba(52,211,192,.14);
+  color: var(--teal);
+  border: 1px solid rgba(52,211,192,.28);
+}
+.entrega-badge.entrega-futura{
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.entrega-badge.entrega-sin-fecha{
+  background: var(--surface-3);
+  color: var(--text-faint);
+  border: 1px solid var(--border);
+  font-style: italic;
+}
+

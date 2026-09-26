@@ -582,7 +582,7 @@
           <table>
             <thead>
               <tr>
-                <th>Fecha</th><th>Orden</th><th>Comprador</th><th>Teléfono</th><th>Dirección</th><th>Total</th><th>Cliente</th><th></th>
+                <th>Fecha</th><th>Orden</th><th>Comprador</th><th>Teléfono</th><th>Dirección</th><th>Total</th><th>Fecha entrega</th><th>Cliente</th><th></th>
               </tr>
             </thead>
             <tbody id="nuevos-tbody"></tbody>
@@ -598,7 +598,7 @@
           <table>
             <thead>
               <tr>
-                <th>Fecha asignación</th><th>Orden</th><th>Comprador</th><th>Teléfono</th><th>Total</th><th>Ya Compró</th><th>Estado</th>
+                <th>Fecha asignación</th><th>Orden</th><th>Comprador</th><th>Teléfono</th><th>Total</th><th>Fecha entrega</th><th>Ya Compró</th><th>Estado</th>
               </tr>
             </thead>
             <tbody id="guardados-tbody"></tbody>
@@ -614,11 +614,22 @@
           <button class="seg-tab" data-tab="completado">Completados <span class="seg-tab-count" id="seg-count-completado">0</span></button>
         </div>
         <div class="view-subheader">Pedidos en seguimiento: aquí se controla el estado y la evolución del pedido.</div>
+        <div class="seg-tabs" id="seg-filtro-entrega">
+          <button class="seg-tab active" data-entrega="todos">Todos</button>
+          <button class="seg-tab" data-entrega="hoy">Hoy</button>
+          <button class="seg-tab" data-entrega="atrasados">Atrasados</button>
+          <button class="seg-tab" data-entrega="semana">Esta semana</button>
+          <button class="seg-tab" data-entrega="proximos7">Próximos 7 días</button>
+          <button class="seg-tab" data-entrega="mes">Este mes</button>
+          <button class="seg-tab" data-entrega="sin_fecha">Sin fecha</button>
+        </div>
         <div class="resu-filtro-custom" style="grid-template-columns:auto;max-width:220px;margin:8px 0 4px;">
           <label>Ordenar por
             <select id="seg-sort">
               <option value="fecha_desc">Más reciente primero</option>
               <option value="fecha_asc">Más antiguo primero</option>
+              <option value="entrega_asc">Fecha entrega ↑</option>
+              <option value="entrega_desc">Fecha entrega ↓</option>
               <option value="total_desc">Mayor total</option>
               <option value="total_asc">Menor total</option>
             </select>
@@ -628,7 +639,7 @@
           <table>
             <thead>
               <tr>
-                <th>Fecha asignación</th><th>Orden</th><th>Comprador</th><th>Teléfono</th><th>Total</th><th>Ya compró</th><th>Estados</th><th>Marcador</th><th></th>
+                <th>Fecha asignación</th><th>Orden</th><th>Comprador</th><th>Teléfono</th><th>Total</th><th>Ya compró</th><th>Fecha entrega</th><th>Estados</th><th>Marcador</th><th></th>
               </tr>
             </thead>
             <tbody id="seg-tbody"></tbody>

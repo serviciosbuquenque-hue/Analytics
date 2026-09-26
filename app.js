@@ -1655,9 +1655,26 @@ function renderPedidosNuevos(){
   tbody.innerHTML = '';
   document.getElementById('nuevos-empty').hidden = list.length !== 0;
 
+  const getEntregaClass = (fecha) => {
+    if (!fecha) return 'entrega-sin-fecha';
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    const hoyStr = hoy.toISOString().slice(0, 10);
+    if (fecha === hoyStr) return 'entrega-hoy';
+    if (fecha < hoyStr) return 'entrega-atrasado';
+    const fin = new Date(hoy);
+    fin.setDate(hoy.getDate() + 7);
+    const finStr = fin.toISOString().slice(0, 10);
+    if (fecha <= finStr) return 'entrega-proxima';
+    return 'entrega-futura';
+  };
+
   list.forEach(p => {
     const reincidente = esClienteReincidente(p, historial);
     const tr = document.createElement('tr');
+    const entregaClass = getEntregaClass(p.fecha_entrega);
+    const entregaValue = p.fecha_entrega || '';
+    const entregaDisplay = entregaValue ? `<input type="date" class="entrega-input ${entregaClass}" value="${entregaValue}" data-id="${p.id}" title="Fecha de entrega">` : `<input type="date" class="entrega-input ${entregaClass}" data-id="${p.id}" title="Fecha de entrega" placeholder="Sin fecha">`;
     tr.innerHTML = `
       <td data-label="Fecha">${escapeHtml(p.fecha_registro_backend ? new Date(p.fecha_registro_backend).toLocaleString() : '—')}</td>
       <td data-label="Orden">${escapeHtml(getPedidoNumero(p) || '—')}</td>
@@ -1665,6 +1682,7 @@ function renderPedidosNuevos(){
       <td data-label="Teléfono">${escapeHtml(p.telefono_comprador || '—')}</td>
       <td data-label="Dirección">${escapeHtml(p.direccion_envio || '—')}</td>
       <td data-label="Total">$${Number(p.precio_compra_total || 0).toFixed(2)}</td>
+      <td data-label="Fecha entrega">${entregaDisplay}</td>
       <td data-label="Cliente">${reincidente ? `<span class="pill pill-warn">⏳ Ya compró</span>` : `<span class="pill pill-yes">✓ Nuevo</span>`}</td>
       <td data-label="Acciones">
         <div class="row-actions">
@@ -1675,6 +1693,29 @@ function renderPedidosNuevos(){
         </div>
       </td>`;
     tbody.appendChild(tr);
+  });
+
+  // Event listeners para inputs de fecha de entrega en pedidos nuevos
+  tbody.querySelectorAll('.entrega-input').forEach(input => {
+    input.addEventListener('change', async (e) => {
+      const id = e.target.dataset.id;
+      const fecha = e.target.value;
+      try {
+        await apiFetch(`/api/pedidos/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ fecha_entrega: fecha || null })
+        });
+        const idx = state.pedidosNuevos.findIndex(x => x.id === id);
+        if (idx !== -1) state.pedidosNuevos[idx].fecha_entrega = fecha || null;
+        const newClass = getEntregaClass(fecha || null);
+        e.target.className = `entrega-input ${newClass}`;
+        showToast('Fecha de entrega actualizada.');
+      } catch (err) {
+        showToast('Error actualizando fecha: ' + err.message, true);
+        const pedido = state.pedidosNuevos.find(x => x.id === id);
+        e.target.value = pedido?.fecha_entrega || '';
+      }
+    });
   });
 
   tbody.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => showPedidoDetalle(state.pedidosNuevos.find(x => x.id === b.dataset.view))));
@@ -1694,16 +1735,35 @@ function renderPedidosGuardados(){
   tbody.innerHTML = '';
   document.getElementById('guardados-empty').hidden = list.length !== 0;
 
+  const getEntregaClass = (fecha) => {
+    if (!fecha) return 'entrega-sin-fecha';
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    const hoyStr = hoy.toISOString().slice(0, 10);
+    if (fecha === hoyStr) return 'entrega-hoy';
+    if (fecha < hoyStr) return 'entrega-atrasado';
+    const fin = new Date(hoy);
+    fin.setDate(hoy.getDate() + 7);
+    const finStr = fin.toISOString().slice(0, 10);
+    if (fecha <= finStr) return 'entrega-proxima';
+    return 'entrega-futura';
+  };
+
   list.forEach(p => {
     const marcador = MARCADOR[estadoPedidoKey(p)];
     const reincidente = esClienteReincidente(p, [...state.pedidosNuevos, ...state.pedidosSeguimiento]);
     const tr = document.createElement('tr');
+    const entregaClass = getEntregaClass(p.fecha_entrega);
+    const entregaDisplay = p.fecha_entrega 
+      ? `<span class="entrega-badge ${entregaClass}">${escapeHtml(p.fecha_entrega)}</span>` 
+      : `<span class="entrega-badge entrega-sin-fecha">—</span>`;
     tr.innerHTML = `
       <td data-label="Fecha asignación">${escapeHtml(p.fecha_asignacion || '—')}</td>
       <td data-label="Orden">${escapeHtml(getPedidoNumero(p) || '—')}</td>
       <td data-label="Comprador">${escapeHtml(p.nombre_comprador || '—')}</td>
       <td data-label="Teléfono">${escapeHtml(p.telefono_comprador || '—')}</td>
       <td data-label="Total">$${Number(p.precio_compra_total || 0).toFixed(2)}</td>
+      <td data-label="Fecha entrega">${entregaDisplay}</td>
       <td data-label="Ya Compró">${reincidente ? `<span class="pill pill-warn">⏳ Sí</span>` : `<span class="pill pill-no">— No</span>`}</td>
       <td data-label="Estado"><span class="pill ${marcador.cls}">${marcador.text}</span></td>`;
     tbody.appendChild(tr);
@@ -1712,9 +1772,17 @@ function renderPedidosGuardados(){
 
 async function asignarPedido(id){
   try{
+    const pedidoNuevo = state.pedidosNuevos.find(p => p.id === id);
+    const fechaEntrega = pedidoNuevo?.fecha_entrega || null;
     const { pedido } = await apiFetch(`/api/pedidos/${id}/asignar`, {
       method: 'POST',
-      body: JSON.stringify({ aceptado: false, entregado: false, pendiente_pago: false, pagado: false })
+      body: JSON.stringify({ 
+        aceptado: false, 
+        entregado: false, 
+        pendiente_pago: false, 
+        pagado: false,
+        fecha_entrega: fechaEntrega
+      })
     });
     state.pedidosNuevos = state.pedidosNuevos.filter(p => p.id !== id);
     state.pedidosSeguimiento.push(normalizePedidoState({
@@ -1772,6 +1840,7 @@ function isPedidoVisibleEnSeguimiento(p){
 }
 
 let segTabActual = 'proceso';
+let segFiltroEntrega = 'todos';
 
 // Agrupa pedidos "en proceso" por cliente usando la misma lógica de
 // ordersBelongToSameUser (teléfono, correo o id de usuario), pero de forma
@@ -1804,7 +1873,7 @@ function renderPedidosSeguimiento(flashId){
     if (!isPedidoVisibleEnSeguimiento(p)) return false;
     const key = estadoPedidoKey(p);
     const enPestaña = segTabActual === 'completado' ? key === 'completado' : key !== 'completado';
-    return enPestaña && coincideBusquedaPedido(p, term) && pasaFiltroFechaPedido(p);
+    return enPestaña && coincideBusquedaPedido(p, term) && pasaFiltroFechaPedido(p) && pasaFiltroEntrega(p);
   });
 
   ordenarPedidosSeguimiento(list);
@@ -1845,6 +1914,21 @@ function renderPedidosSeguimiento(flashId){
   const gruposMostrados = new Set();
   const trIndexById = new Map();
 
+  // Helper para clase CSS según estado de fecha de entrega
+  const getEntregaClass = (fecha) => {
+    if (!fecha) return 'entrega-sin-fecha';
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    const hoyStr = hoy.toISOString().slice(0, 10);
+    if (fecha === hoyStr) return 'entrega-hoy';
+    if (fecha < hoyStr) return 'entrega-atrasado';
+    const fin = new Date(hoy);
+    fin.setDate(hoy.getDate() + 7);
+    const finStr = fin.toISOString().slice(0, 10);
+    if (fecha <= finStr) return 'entrega-proxima';
+    return 'entrega-futura';
+  };
+
   listaOrdenada.forEach(p => {
     const grupo = grupoPorId.get(p.id);
 
@@ -1853,7 +1937,7 @@ function renderPedidosSeguimiento(flashId){
       const total = grupo.reduce((s, g) => s + Number(g.precio_compra_total || 0), 0);
       const trGrupo = document.createElement('tr');
       trGrupo.className = 'seg-grupo-row';
-      trGrupo.innerHTML = `<td colspan="9"><span class="seg-grupo-icon">🔗</span> ${escapeHtml(p.nombre_comprador || 'Cliente')} — ${grupo.length} pedidos en proceso — Total: $${total.toFixed(2)}</td>`;
+      trGrupo.innerHTML = `<td colspan="10"><span class="seg-grupo-icon">🔗</span> ${escapeHtml(p.nombre_comprador || 'Cliente')} — ${grupo.length} pedidos en proceso — Total: $${total.toFixed(2)}</td>`;
       tbody.appendChild(trGrupo);
     }
 
@@ -1861,6 +1945,9 @@ function renderPedidosSeguimiento(flashId){
     const tr = document.createElement('tr');
     if (grupo) tr.className = 'seg-agrupado';
     const marcador = MARCADOR[estadoPedidoKey(p)];
+    const entregaClass = getEntregaClass(p.fecha_entrega);
+    const entregaValue = p.fecha_entrega || '';
+    const entregaDisplay = entregaValue ? `<input type="date" class="entrega-input ${entregaClass}" value="${entregaValue}" data-id="${p.id}" title="Fecha de entrega">` : `<input type="date" class="entrega-input ${entregaClass}" data-id="${p.id}" title="Fecha de entrega" placeholder="Sin fecha">`;
     tr.innerHTML = `
       <td data-label="Fecha asignación">${escapeHtml(p.fecha_asignacion || '—')}</td>
       <td data-label="Orden">${escapeHtml(getPedidoNumero(p) || '—')}</td>
@@ -1868,6 +1955,7 @@ function renderPedidosSeguimiento(flashId){
       <td data-label="Teléfono">${escapeHtml(p.telefono_comprador || '—')}</td>
       <td data-label="Total">$${Number(p.precio_compra_total || 0).toFixed(2)}</td>
       <td data-label="Ya Compró">${reincidente ? `<span class="pill pill-warn">⏳ Sí</span>` : `<span class="pill pill-no">— No</span>`}</td>
+      <td data-label="Fecha entrega">${entregaDisplay}</td>
       <td data-label="Estados">
         <div class="estado-checks" data-estados="${p.id}">
           ${ESTADO_FIELDS.map(f => {
@@ -1890,6 +1978,32 @@ function renderPedidosSeguimiento(flashId){
       </td>`;
     tbody.appendChild(tr);
     trIndexById.set(p.id, tr);
+  });
+
+  // Event listeners para inputs de fecha de entrega
+  tbody.querySelectorAll('.entrega-input').forEach(input => {
+    input.addEventListener('change', async (e) => {
+      const id = e.target.dataset.id;
+      const fecha = e.target.value; // YYYY-MM-DD o vacío
+      try {
+        await apiFetch(`/api/pedidos-asignados/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ fecha_entrega: fecha || null })
+        });
+        // Actualizar estado local
+        const idx = state.pedidosSeguimiento.findIndex(x => x.id === id);
+        if (idx !== -1) state.pedidosSeguimiento[idx].fecha_entrega = fecha || null;
+        // Actualizar clase visual
+        const newClass = getEntregaClass(fecha || null);
+        e.target.className = `entrega-input ${newClass}`;
+        showToast('Fecha de entrega actualizada.');
+      } catch (err) {
+        showToast('Error actualizando fecha: ' + err.message, true);
+        // Revertir valor en el input
+        const pedido = state.pedidosSeguimiento.find(x => x.id === id);
+        e.target.value = pedido?.fecha_entrega || '';
+      }
+    });
   });
 
   tbody.querySelectorAll('[data-estados]').forEach(container => {
@@ -1922,8 +2036,11 @@ let segSortBy = 'fecha_desc';
 
 function ordenarPedidosSeguimiento(list){
   const fechaVal = p => { const t = new Date(p.fecha_asignacion || p.fecha_registro_backend || 0).getTime(); return isNaN(t) ? 0 : t; };
+  const entregaVal = p => { const t = new Date((p.fecha_entrega || '') + 'T00:00:00').getTime(); return isNaN(t) ? 0 : t; };
   if (segSortBy === 'fecha_asc') list.sort((a, b) => fechaVal(a) - fechaVal(b));
   else if (segSortBy === 'fecha_desc') list.sort((a, b) => fechaVal(b) - fechaVal(a));
+  else if (segSortBy === 'entrega_asc') list.sort((a, b) => entregaVal(a) - entregaVal(b));
+  else if (segSortBy === 'entrega_desc') list.sort((a, b) => entregaVal(b) - entregaVal(a));
   else if (segSortBy === 'total_desc') list.sort((a, b) => Number(b.precio_compra_total || 0) - Number(a.precio_compra_total || 0));
   else if (segSortBy === 'total_asc') list.sort((a, b) => Number(a.precio_compra_total || 0) - Number(b.precio_compra_total || 0));
   return list;
@@ -1962,12 +2079,43 @@ function pasaFiltroFechaPedido(p){
   return true;
 }
 
+function pasaFiltroEntrega(p){
+  if (segFiltroEntrega === 'todos') return true;
+  const fecha = p.fecha_entrega;
+  if (!fecha) return segFiltroEntrega === 'sin_fecha';
+  const f = new Date(fecha + 'T00:00:00');
+  if (isNaN(f)) return false;
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const hoyStr = hoy.toISOString().slice(0, 10);
+  if (segFiltroEntrega === 'hoy') return fecha === hoyStr;
+  if (segFiltroEntrega === 'atrasados') return fecha < hoyStr;
+  if (segFiltroEntrega === 'semana') return esDeEstaSemana(fecha);
+  if (segFiltroEntrega === 'proximos7') {
+    const fin = new Date(hoy);
+    fin.setDate(hoy.getDate() + 7);
+    const finStr = fin.toISOString().slice(0, 10);
+    return fecha >= hoyStr && fecha <= finStr;
+  }
+  if (segFiltroEntrega === 'mes') return esDelMesActual(fecha);
+  if (segFiltroEntrega === 'sin_fecha') return !fecha;
+  return true;
+}
+
 document.querySelectorAll('#pedidos-filtro-fecha .seg-tab').forEach(btn => {
   btn.addEventListener('click', () => {
     pedidosFiltroFecha = btn.dataset.pfiltro;
     document.querySelectorAll('#pedidos-filtro-fecha .seg-tab').forEach(b => b.classList.toggle('active', b === btn));
     renderPedidosNuevos();
     renderPedidosGuardados();
+    renderPedidosSeguimiento();
+  });
+});
+
+document.querySelectorAll('#seg-filtro-entrega .seg-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    segFiltroEntrega = btn.dataset.entrega;
+    document.querySelectorAll('#seg-filtro-entrega .seg-tab').forEach(b => b.classList.toggle('active', b === btn));
     renderPedidosSeguimiento();
   });
 });
@@ -1990,7 +2138,7 @@ function exportarCSV(headers, rows, filename){
 }
 
 function exportarPedidosCSV(){
-  const headers = ['Fecha', 'Orden', 'Comprador', 'Teléfono', 'Dirección', 'Total', 'Estado'];
+  const headers = ['Fecha', 'Orden', 'Comprador', 'Teléfono', 'Dirección', 'Total', 'Fecha entrega', 'Estado'];
   const todos = [
     ...state.pedidosNuevos.map(p => ({ ...p, _estado: 'Nuevo' })),
     ...state.pedidosSeguimiento.map(p => ({ ...p, _estado: MARCADOR[estadoPedidoKey(p)].textPlano }))
@@ -2002,6 +2150,7 @@ function exportarPedidosCSV(){
     p.telefono_comprador || '',
     p.direccion_envio || '',
     Number(p.precio_compra_total || 0).toFixed(2),
+    p.fecha_entrega || '',
     p._estado || ''
   ]);
   exportarCSV(headers, rows, `pedidos-buquenque-${new Date().toISOString().slice(0, 10)}.csv`);
@@ -2106,6 +2255,13 @@ function renderPedidoDetalleBody(){
       <dt>Correo</dt><dd>${escapeHtml(p.correo_comprador || '—')}</dd>
       <dt>Dirección</dt><dd>${escapeHtml(p.direccion_envio || '—')}</dd>
       <dt>Entrega a</dt><dd>${escapeHtml(p.nombre_persona_entrega || '—')} (${escapeHtml(p.telefono_persona_entrega || '—')})</dd>
+      <dt>Fecha entrega</dt><dd>
+        ${pedidoDetalleEsSeguimiento(p)
+          ? `<input type="date" id="pedido-detalle-fecha-entrega" value="${p.fecha_entrega || ''}" class="entrega-input-detalle" title="Fecha de entrega">
+             <button class="btn btn-ghost btn-small" id="pedido-detalle-guardar-entrega" style="margin-left:8px;">Guardar</button>`
+          : escapeHtml(p.fecha_entrega || '—')
+        }
+      </dd>
       <dt>Total</dt><dd id="pedido-detalle-total">$${Number(p.precio_compra_total || 0).toFixed(2)}</dd>
     </dl>
   `;
@@ -2129,6 +2285,31 @@ function renderPedidoDetalleBody(){
     `;
     const editBtn = document.getElementById('pedido-editar-compras-btn');
     if (editBtn) editBtn.addEventListener('click', iniciarEdicionComprasPedido);
+    // Guardar fecha de entrega desde el modal de detalle
+    const saveEntregaBtn = document.getElementById('pedido-detalle-guardar-entrega');
+    const entregaInput = document.getElementById('pedido-detalle-fecha-entrega');
+    if (saveEntregaBtn && entregaInput) {
+      saveEntregaBtn.addEventListener('click', async () => {
+        const id = pedidoDetalleActual.id;
+        const fecha = entregaInput.value; // YYYY-MM-DD o vacío
+        try {
+          await apiFetch(`/api/pedidos-asignados/${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ fecha_entrega: fecha || null })
+          });
+          // Actualizar estado local
+          const idx = state.pedidosSeguimiento.findIndex(x => x.id === id);
+          if (idx !== -1) state.pedidosSeguimiento[idx].fecha_entrega = fecha || null;
+          showToast('Fecha de entrega actualizada.');
+          renderPedidosSeguimiento();
+        } catch (err) {
+          showToast('Error actualizando fecha: ' + err.message, true);
+          // Revertir valor en el input
+          const pedido = state.pedidosSeguimiento.find(x => x.id === id);
+          entregaInput.value = pedido?.fecha_entrega || '';
+        }
+      });
+    }
     return;
   }
 
