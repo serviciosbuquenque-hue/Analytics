@@ -1675,8 +1675,9 @@ function renderPedidosNuevos(){
     const entregaClass = getEntregaClass(p.fecha_entrega);
     const entregaValue = p.fecha_entrega || '';
     const entregaDisplay = entregaValue ? `<input type="date" class="entrega-input ${entregaClass}" value="${entregaValue}" data-id="${p.id}" title="Fecha de entrega">` : `<input type="date" class="entrega-input ${entregaClass}" data-id="${p.id}" title="Fecha de entrega" placeholder="Sin fecha">`;
+    const fechaPedido = getPedidoFecha(p);
     tr.innerHTML = `
-      <td data-label="Fecha">${escapeHtml(p.fecha_registro_backend ? new Date(p.fecha_registro_backend).toLocaleString() : '—')}</td>
+      <td data-label="Fecha">${escapeHtml(fechaPedido ? new Date(fechaPedido).toLocaleString() : '—')}</td>
       <td data-label="Orden">${escapeHtml(getPedidoNumero(p) || '—')}</td>
       <td data-label="Comprador">${escapeHtml(p.nombre_comprador || '—')}</td>
       <td data-label="Teléfono">${escapeHtml(p.telefono_comprador || '—')}</td>
