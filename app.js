@@ -888,6 +888,7 @@ async function loadWhatsAppGrupos(){
   if (!apiUrlOk()) return;
   const list = document.getElementById('wa-grupos-list');
   const select = document.getElementById('wa-test-grupo');
+  const jidInput = document.getElementById('wa-grupo-jid');
   list.innerHTML = '<p class="hint">Cargando grupos...</p>';
   try{
     const data = await apiFetch('/api/whatsapp-grupos');
@@ -896,9 +897,25 @@ async function loadWhatsAppGrupos(){
       list.innerHTML = '<p class="hint">Sin grupos vinculados (¿bot conectado?).</p>';
       return;
     }
-    list.innerHTML = grupos.map(g =>
-      '<div class="wa-row"><span>' + escapeHtml(g.nombre || 'Sin nombre') + '</span><span>' + (g.participantes || 0) + ' miembros</span></div>'
-    ).join('');
+    list.innerHTML = grupos.map(g => {
+      const nombre = escapeHtml(g.nombre || 'Sin nombre');
+      const jid = escapeHtml(g.jid);
+      const miembros = g.participantes || 0;
+      const shortJid = jid.length > 22 ? jid.slice(0, 20) + '…' : jid;
+      return '<div class="wa-row wa-row-clickable" data-jid="' + jid + '" title="Click para usar este grupo\nJID completo: ' + jid + '">'
+        + '<span class="wa-grupo-nombre">' + nombre + '</span>'
+        + '<span class="wa-grupo-meta">' + miembros + ' miembros · ' + shortJid + '</span>'
+        + '</div>';
+    }).join('');
+    list.querySelectorAll('.wa-row-clickable').forEach(row => {
+      row.addEventListener('click', () => {
+        const jid = row.dataset.jid;
+        if (jidInput) { jidInput.value = jid; jidInput.focus(); }
+        list.querySelectorAll('.wa-row-clickable').forEach(r => r.classList.remove('wa-selected'));
+        row.classList.add('wa-selected');
+        showToast('Grupo seleccionado: ' + jid);
+      });
+    });
     select.innerHTML = '<option value="">— usa el grupo configurado —</option>' + grupos.map(g =>
       '<option value="' + escapeHtml(g.jid) + '">' + escapeHtml(g.nombre || g.jid) + '</option>'
     ).join('');
