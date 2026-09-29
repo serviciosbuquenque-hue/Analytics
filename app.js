@@ -970,14 +970,25 @@ async function loadWhatsAppQueue(){
       } else {
         partes.push('El drain aún no ha corrido en este proceso: pulsa "Drenar ahora"');
       }
-      partes.push('Rama: ' + (d.rama || '?') + ' · pendientes: ' + (d.pendientes ?? items.filter(j => j.status === 'pending').length));
+      // Distingue espera programada (delay/horario, normal) de atasco real.
+      if ((d.pendientes || 0) > 0 && (d.elegibles || 0) === 0 && d.proximoEnSeg != null) {
+        partes.push('Nada elegible aún: próximo programado en ' + d.proximoEnSeg + 's (delay/horario). Espera y vuelve a drenar');
+      }
+      partes.push('Rama: ' + (d.rama || '?') + ' · pendientes: ' + (d.pendientes ?? items.filter(j => j.status === 'pending').length) + ' · elegibles: ' + (d.elegibles ?? '?'));
       drainHint.textContent = partes.join(' · ');
       drainHint.className = 'hint ' + ((!d.botConfigurado || d.lastDrainError) ? 'err' : (d.pendientes > 0 ? 'warn' : 'ok'));
     }
     if (!items.length){ box.innerHTML = '<p class="hint">Cola vacía.</p>'; return; }
+    const ahoraSrv = (data._diagnostico && data._diagnostico.now) || Date.now();
     box.innerHTML = items.slice(0, 30).map(j => {
       const err = j.lastError ? ' <span class="hint">(' + escapeHtml(String(j.lastError).slice(0, 80)) + ')</span>' : '';
-      return '<div class="wa-row"><span>#' + escapeHtml(j.orderNumber || j.id) + ' · ' + escapeHtml(j.tipo || '') + err + '</span><span>' + escapeHtml(waStatusLabel(j.status)) + '</span></div>';
+      // Pendiente pero programado a futuro: mostrar en cuánto se vuelve elegible.
+      let prog = '';
+      if (j.status === 'pending') {
+        const falta = Number(j.scheduledAt || 0) - ahoraSrv;
+        if (falta > 0) prog = ' <span class="hint">(en ' + Math.ceil(falta / 1000) + 's)</span>';
+      }
+      return '<div class="wa-row"><span>#' + escapeHtml(j.orderNumber || j.id) + ' · ' + escapeHtml(j.tipo || '') + err + prog + '</span><span>' + escapeHtml(waStatusLabel(j.status)) + '</span></div>';
     }).join('');
   }catch(e){ box.innerHTML = '<p class="hint">No se pudo cargar la cola.</p>'; }
 }
