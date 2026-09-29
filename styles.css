@@ -2008,3 +2008,7 @@ textarea{ resize: vertical; }
 .wa-row-clickable.wa-selected{background:rgba(91,124,250,.18);border-color:#5b7cfa;box-shadow:0 0 0 2px rgba(91,124,250,.25);}
 .wa-grupo-nombre{font-weight:600;}
 .wa-grupo-meta{font-size:0.75rem;color:#8891a8;font-family:ui-monospace,monospace;}
+
+.wa-pedido-group{border:1px solid var(--border);border-radius:8px;margin:10px 0;overflow:hidden;}
+.wa-pedido-head{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--surface-2);font-weight:600;font-size:13px;}
+.wa-pedido-group .wa-row{padding:8px 10px;}

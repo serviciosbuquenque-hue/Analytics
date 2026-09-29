@@ -517,6 +517,7 @@
         <div class="modal-section-title">Estado y grupo</div>
         <label class="check"><input type="checkbox" id="wa-enabled"> Bot habilitado</label>
         <label class="check"><input type="checkbox" id="wa-grupo-enabled"> Enviar factura al grupo</label>
+        <label class="check"><input type="checkbox" id="wa-grupo-sync" checked> Sincronizar factura con el DM (si hay mensaje programado, la factura espera a su hora; fuera de horario no sale sola)</label>
         <label class="check"><input type="checkbox" id="wa-dryrun"> Modo prueba en seco (no llama al bot)</label>
         <label>Grupo de pedidos (JID)
           <input type="text" id="wa-grupo-jid" placeholder="1203630...@g.us">
@@ -568,6 +569,12 @@
         <div class="form-actions">
           <button class="btn btn-ghost" id="wa-queue-load" type="button">Recargar cola</button>
           <button class="btn btn-primary" id="wa-drain-now" type="button">Drenar ahora</button>
+          <button class="btn btn-ghost" id="wa-vaciar" type="button">Vaciar pendientes</button>
+        </div>
+        <div class="seg-tabs" id="wa-cola-filtros">
+          <button class="seg-tab active" data-wfiltro="todos">Todos</button>
+          <button class="seg-tab" data-wfiltro="pendientes">Pendientes</button>
+          <button class="seg-tab" data-wfiltro="problemas">Con problema</button>
         </div>
         <p class="hint" id="wa-drain-hint">Si hay pendientes atascados, drena manualmente sin esperar al cron.</p>
         <div id="wa-queue-list"><p class="hint">Sin cargar todavía.</p></div>

@@ -672,6 +672,13 @@ document.getElementById('wa-grupos')?.addEventListener('click', loadWhatsAppGrup
 document.getElementById('wa-test')?.addEventListener('click', sendWhatsAppTest);
 document.getElementById('wa-queue-load')?.addEventListener('click', loadWhatsAppQueue);
 document.getElementById('wa-drain-now')?.addEventListener('click', drainWhatsAppNow);
+document.getElementById('wa-vaciar')?.addEventListener('click', vaciarWhatsAppPendientes);
+document.querySelectorAll('#wa-cola-filtros .seg-tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('#wa-cola-filtros .seg-tab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  window.__waFiltroCola = t.dataset.wfiltro || 'todos';
+  loadWhatsAppQueue().catch(() => {});
+}));
 document.getElementById('wa-fallidos-load')?.addEventListener('click', loadWhatsAppFallidos);
 
 function initConfigFields(){
@@ -840,6 +847,7 @@ async function loadWhatsApp(){
     const cfg = data.config || {};
     document.getElementById('wa-enabled').checked = cfg.enabled !== false;
     document.getElementById('wa-grupo-enabled').checked = cfg.grupoEnabled !== false;
+    document.getElementById('wa-grupo-sync').checked = cfg.grupoSincronizado !== false;
     document.getElementById('wa-dryrun').checked = cfg.dryRun === true;
     document.getElementById('wa-grupo-jid').value = cfg.grupoJid || '';
     document.getElementById('wa-cliente-enabled').checked = cfg.clienteEnabled === true;
@@ -864,6 +872,7 @@ async function saveWhatsAppConfig(){
   const payload = {
     enabled: document.getElementById('wa-enabled').checked,
     grupoEnabled: document.getElementById('wa-grupo-enabled').checked,
+    grupoSincronizado: document.getElementById('wa-grupo-sync').checked,
     dryRun: document.getElementById('wa-dryrun').checked,
     grupoJid: document.getElementById('wa-grupo-jid').value.trim(),
     clienteEnabled: document.getElementById('wa-cliente-enabled').checked,
@@ -960,6 +969,7 @@ async function loadWhatsAppQueue(){
     const d = data._diagnostico || null;
     if (drainHint && d){
       const partes = [];
+      if (d.enabled === false) partes.push('⛔ Bot deshabilitado: la cola no avanza (no se encola ni se envía). Vacía pendientes si lo deseas');
       if (!d.botConfigurado) partes.push('⚠ Bot no configurado (falta WHATSAPP_BOT_URL/SECRET en el backend)');
       if (!d.cronConfigurado) partes.push('⚠ Sin cron externo (WHATSAPP_CRON_SECRET): dependes del intervalo local');
       if (d.draining) partes.push('Drenando ahora mismo… recarga en unos segundos');
@@ -976,20 +986,42 @@ async function loadWhatsAppQueue(){
       }
       partes.push('Rama: ' + (d.rama || '?') + ' · pendientes: ' + (d.pendientes ?? items.filter(j => j.status === 'pending').length) + ' · elegibles: ' + (d.elegibles ?? '?'));
       drainHint.textContent = partes.join(' · ');
-      drainHint.className = 'hint ' + ((!d.botConfigurado || d.lastDrainError) ? 'err' : (d.pendientes > 0 ? 'warn' : 'ok'));
+      drainHint.className = 'hint ' + ((d.enabled === false || !d.botConfigurado || d.lastDrainError) ? 'err' : (d.pendientes > 0 ? 'warn' : 'ok'));
     }
     if (!items.length){ box.innerHTML = '<p class="hint">Cola vacía.</p>'; return; }
     const ahoraSrv = (data._diagnostico && data._diagnostico.now) || Date.now();
-    box.innerHTML = items.slice(0, 30).map(j => {
-      const err = j.lastError ? ' <span class="hint">(' + escapeHtml(String(j.lastError).slice(0, 80)) + ')</span>' : '';
-      // Pendiente pero programado a futuro: mostrar en cuánto se vuelve elegible.
-      let prog = '';
-      if (j.status === 'pending') {
-        const falta = Number(j.scheduledAt || 0) - ahoraSrv;
-        if (falta > 0) prog = ' <span class="hint">(en ' + Math.ceil(falta / 1000) + 's)</span>';
-      }
-      return '<div class="wa-row"><span>#' + escapeHtml(j.orderNumber || j.id) + ' · ' + escapeHtml(j.tipo || '') + err + prog + '</span><span>' + escapeHtml(waStatusLabel(j.status)) + '</span></div>';
+    const filtroCola = window.__waFiltroCola || 'todos';
+    const esProblema = (j) => j.status === 'failed' || j.status === 'needs_review' || j.status === 'rescheduled' || (Boolean(j.lastError) && j.status !== 'sent');
+    let lista = items.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    if (filtroCola === 'pendientes') lista = lista.filter(j => j.status === 'pending');
+    if (filtroCola === 'problemas') lista = lista.filter(esProblema);
+    if (!lista.length){ box.innerHTML = '<p class="hint">Sin envíos en este filtro.</p>'; return; }
+    // Agrupado por número de pedido: factura + DM juntos, no regados.
+    const grupos = new Map();
+    for (const j of lista.slice(0, 60)) {
+      const k = j.orderNumber || j.id;
+      if (!grupos.has(k)) grupos.set(k, []);
+      grupos.get(k).push(j);
+    }
+    const prioTipo = (t) => (t === 'grupo' ? 0 : 1);
+    box.innerHTML = [...grupos.entries()].map(([order, jobs]) => {
+      jobs.sort((a, b) => prioTipo(a.tipo) - prioTipo(b.tipo));
+      const filas = jobs.map(j => {
+        const err = j.lastError ? ' <span class="hint">(' + escapeHtml(String(j.lastError).slice(0, 80)) + ')</span>' : '';
+        // Pendiente pero programado a futuro: mostrar en cuánto se vuelve elegible.
+        let prog = '';
+        if (j.status === 'pending') {
+          const falta = Number(j.scheduledAt || 0) - ahoraSrv;
+          if (falta > 0) prog = ' <span class="hint">(en ' + Math.ceil(falta / 1000) + 's)</span>';
+        }
+        const puedeBorrar = j.status !== 'sending' && j.status !== 'sent';
+        const btnBorrar = puedeBorrar ? ' <button type="button" class="btn btn-ghost btn-small" data-borrar="' + escapeHtml(j.id) + '">Eliminar</button>' : '';
+        return '<div class="wa-row"><span>#' + escapeHtml(j.orderNumber || j.id) + ' · ' + escapeHtml(j.tipo || '') + err + prog + '</span><span>' + escapeHtml(waStatusLabel(j.status)) + btnBorrar + '</span></div>';
+      }).join('');
+      return '<div class="wa-pedido-group"><div class="wa-pedido-head"><span>Pedido ' + escapeHtml(order) + '</span><button type="button" class="btn btn-ghost btn-small" data-desestimar="' + escapeHtml(order) + '">Descartar pedido</button></div>' + filas + '</div>';
     }).join('');
+    box.querySelectorAll('[data-borrar]').forEach(b => b.addEventListener('click', () => borrarWhatsAppJob(b.dataset.borrar)));
+    box.querySelectorAll('[data-desestimar]').forEach(b => b.addEventListener('click', () => desestimarPedidoWhatsApp(b.dataset.desestimar)));
   }catch(e){ box.innerHTML = '<p class="hint">No se pudo cargar la cola.</p>'; }
 }
 
@@ -1004,6 +1036,43 @@ async function drainWhatsAppNow(){
   }catch(e){
     showToast('Error lanzando drain: ' + e.message, true);
     if (hint){ hint.textContent = 'No se pudo lanzar el drain: ' + e.message; hint.className = 'hint err'; }
+  }
+}
+
+async function borrarWhatsAppJob(id){
+  if (!apiUrlOk() || !id) return;
+  if (!confirm('¿Eliminar este envío de la cola? Ya no se mandará.')) return;
+  try{
+    await apiFetch('/api/whatsapp-queue/' + encodeURIComponent(id), { method: 'DELETE' });
+    showToast('Envío eliminado.');
+    loadWhatsAppQueue().catch(() => {});
+  }catch(e){
+    showToast('No se pudo eliminar: ' + e.message, true);
+  }
+}
+
+async function desestimarPedidoWhatsApp(orderNumber){
+  if (!apiUrlOk() || !orderNumber) return;
+  if (!confirm('¿Descartar factura y DM del pedido ' + orderNumber + '?')) return;
+  try{
+    const data = await apiFetch('/api/whatsapp-desestimar-pedido', { method: 'POST', body: JSON.stringify({ orderNumber }) });
+    showToast('Descartados: ' + (data.descartados || 0) + ((data.omitidos && data.omitidos.length) ? ' (omitidos en curso/enviados: ' + data.omitidos.length + ')' : ''));
+    loadWhatsAppQueue().catch(() => {});
+    loadWhatsAppFallidos().catch(() => {});
+  }catch(e){
+    showToast('No se pudo descartar: ' + e.message, true);
+  }
+}
+
+async function vaciarWhatsAppPendientes(){
+  if (!apiUrlOk()) return;
+  if (!confirm('¿Descartar TODOS los pendientes/reprogramados de la cola?')) return;
+  try{
+    const data = await apiFetch('/api/whatsapp-vaciar-pendientes', { method: 'POST', body: JSON.stringify({}) });
+    showToast('Descartados: ' + (data.descartados || 0));
+    loadWhatsAppQueue().catch(() => {});
+  }catch(e){
+    showToast('No se pudo vaciar: ' + e.message, true);
   }
 }
 
