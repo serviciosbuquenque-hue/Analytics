@@ -671,6 +671,7 @@ document.getElementById('wa-load')?.addEventListener('click', loadWhatsApp);
 document.getElementById('wa-grupos')?.addEventListener('click', loadWhatsAppGrupos);
 document.getElementById('wa-test')?.addEventListener('click', sendWhatsAppTest);
 document.getElementById('wa-queue-load')?.addEventListener('click', loadWhatsAppQueue);
+document.getElementById('wa-drain-now')?.addEventListener('click', drainWhatsAppNow);
 document.getElementById('wa-fallidos-load')?.addEventListener('click', loadWhatsAppFallidos);
 
 function initConfigFields(){
@@ -951,14 +952,48 @@ function waStatusLabel(status){
 async function loadWhatsAppQueue(){
   if (!apiUrlOk()) return;
   const box = document.getElementById('wa-queue-list');
+  const drainHint = document.getElementById('wa-drain-hint');
   try{
     const data = await apiFetch('/api/whatsapp-queue');
     const items = data.items || [];
+    // Diagnóstico del drain: muestra la causa cuando hay pendientes atascados.
+    const d = data._diagnostico || null;
+    if (drainHint && d){
+      const partes = [];
+      if (!d.botConfigurado) partes.push('⚠ Bot no configurado (falta WHATSAPP_BOT_URL/SECRET en el backend)');
+      if (!d.cronConfigurado) partes.push('⚠ Sin cron externo (WHATSAPP_CRON_SECRET): dependes del intervalo local');
+      if (d.draining) partes.push('Drenando ahora mismo… recarga en unos segundos');
+      else if (d.lastDrainAt) {
+        const hace = Math.max(0, Math.round((d.now - d.lastDrainAt) / 1000));
+        partes.push('Último drain hace ' + hace + 's (' + (d.lastDrainOrigen || '?') + '): ' + (d.lastDrainResult || '?'));
+        if (d.lastDrainError) partes.push('Error: ' + d.lastDrainError);
+      } else {
+        partes.push('El drain aún no ha corrido en este proceso: pulsa "Drenar ahora"');
+      }
+      partes.push('Rama: ' + (d.rama || '?') + ' · pendientes: ' + (d.pendientes ?? items.filter(j => j.status === 'pending').length));
+      drainHint.textContent = partes.join(' · ');
+      drainHint.className = 'hint ' + ((!d.botConfigurado || d.lastDrainError) ? 'err' : (d.pendientes > 0 ? 'warn' : 'ok'));
+    }
     if (!items.length){ box.innerHTML = '<p class="hint">Cola vacía.</p>'; return; }
-    box.innerHTML = items.slice(0, 30).map(j =>
-      '<div class="wa-row"><span>#' + escapeHtml(j.orderNumber || j.id) + ' · ' + escapeHtml(j.tipo || '') + '</span><span>' + escapeHtml(waStatusLabel(j.status)) + '</span></div>'
-    ).join('');
+    box.innerHTML = items.slice(0, 30).map(j => {
+      const err = j.lastError ? ' <span class="hint">(' + escapeHtml(String(j.lastError).slice(0, 80)) + ')</span>' : '';
+      return '<div class="wa-row"><span>#' + escapeHtml(j.orderNumber || j.id) + ' · ' + escapeHtml(j.tipo || '') + err + '</span><span>' + escapeHtml(waStatusLabel(j.status)) + '</span></div>';
+    }).join('');
   }catch(e){ box.innerHTML = '<p class="hint">No se pudo cargar la cola.</p>'; }
+}
+
+async function drainWhatsAppNow(){
+  if (!apiUrlOk()) return;
+  const hint = document.getElementById('wa-drain-hint');
+  if (hint){ hint.textContent = 'Drenando… espera 10-15s y recarga la cola.'; hint.className = 'hint warn'; }
+  try{
+    await apiFetch('/api/whatsapp-drain-now', { method: 'POST', body: JSON.stringify({}) });
+    showToast('Drain lanzado. Recarga la cola en 10-15 segundos.');
+    setTimeout(() => { loadWhatsAppQueue().catch(() => {}); loadWhatsAppFallidos().catch(() => {}); }, 12000);
+  }catch(e){
+    showToast('Error lanzando drain: ' + e.message, true);
+    if (hint){ hint.textContent = 'No se pudo lanzar el drain: ' + e.message; hint.className = 'hint err'; }
+  }
 }
 
 async function loadWhatsAppFallidos(){
