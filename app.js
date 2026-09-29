@@ -670,6 +670,7 @@ document.getElementById('wa-save')?.addEventListener('click', saveWhatsAppConfig
 document.getElementById('wa-load')?.addEventListener('click', loadWhatsApp);
 document.getElementById('wa-grupos')?.addEventListener('click', loadWhatsAppGrupos);
 document.getElementById('wa-test')?.addEventListener('click', sendWhatsAppTest);
+document.getElementById('wa-test-real')?.addEventListener('click', () => sendWhatsAppTest(true));
 document.getElementById('wa-queue-load')?.addEventListener('click', loadWhatsAppQueue);
 document.getElementById('wa-drain-now')?.addEventListener('click', drainWhatsAppNow);
 document.getElementById('wa-vaciar')?.addEventListener('click', vaciarWhatsAppPendientes);
@@ -847,18 +848,19 @@ async function loadWhatsApp(){
     const cfg = data.config || {};
     document.getElementById('wa-enabled').checked = cfg.enabled !== false;
     document.getElementById('wa-grupo-enabled').checked = cfg.grupoEnabled !== false;
-    document.getElementById('wa-grupo-sync').checked = cfg.grupoSincronizado !== false;
+    document.getElementById('wa-grupo-sync').checked = cfg.grupoSincronizado === true;
     document.getElementById('wa-dryrun').checked = cfg.dryRun === true;
     document.getElementById('wa-grupo-jid').value = cfg.grupoJid || '';
     document.getElementById('wa-cliente-enabled').checked = cfg.clienteEnabled === true;
-    document.getElementById('wa-only-reincidentes').checked = cfg.onlyReincidentes !== false;
     document.getElementById('wa-templates').value = Array.isArray(cfg.templates) ? cfg.templates.join('\n') : '';
     document.getElementById('wa-horario-ini').value = cfg.horarioInicio || '09:00';
     document.getElementById('wa-horario-fin').value = cfg.horarioFin || '21:00';
     document.getElementById('wa-max-dia').value = cfg.maxPorDia ?? 80;
     document.getElementById('wa-delay-min').value = cfg.delayMinSec ?? 60;
     document.getElementById('wa-delay-max').value = cfg.delayMaxSec ?? 180;
-    setWhatsAppHint(cfg.dryRun ? 'Modo prueba en seco activo: no se llama al bot.' : 'Configuración cargada.', cfg.dryRun ? 'warn' : 'ok');
+    const warmupHint = document.getElementById('wa-warmup-hint');
+    if (warmupHint) warmupHint.textContent = `Calentamiento: máximo 10 DMs/día al inicio, +5 por semana hasta ${cfg.maxPorDia ?? 80}; intervalo mínimo 90 s; solo prefijo +53.`;
+    setWhatsAppHint(cfg.dryRun ? 'Modo prueba en seco activo: los envíos de cola no llaman al bot.' : 'Configuración cargada.', cfg.dryRun ? 'warn' : 'ok');
     loadWhatsAppQueue().catch(() => {});
     loadWhatsAppFallidos().catch(() => {});
   }catch(e){
@@ -876,11 +878,10 @@ async function saveWhatsAppConfig(){
     dryRun: document.getElementById('wa-dryrun').checked,
     grupoJid: document.getElementById('wa-grupo-jid').value.trim(),
     clienteEnabled: document.getElementById('wa-cliente-enabled').checked,
-    onlyReincidentes: document.getElementById('wa-only-reincidentes').checked,
     templates: document.getElementById('wa-templates').value.split('\n').map(s => s.trim()).filter(Boolean),
     horarioInicio: document.getElementById('wa-horario-ini').value.trim() || '09:00',
     horarioFin: document.getElementById('wa-horario-fin').value.trim() || '21:00',
-    maxPorDia: Math.max(0, parseInt(document.getElementById('wa-max-dia').value, 10) || 0),
+    maxPorDia: Math.min(1000, Math.max(1, parseInt(document.getElementById('wa-max-dia').value, 10) || 80)),
     delayMinSec: Math.max(0, parseInt(document.getElementById('wa-delay-min').value, 10) || 0),
     delayMaxSec: Math.max(0, parseInt(document.getElementById('wa-delay-max').value, 10) || 0),
   };
@@ -935,14 +936,16 @@ async function loadWhatsAppGrupos(){
   }
 }
 
-async function sendWhatsAppTest(){
+async function sendWhatsAppTest(realSend = false){
   if (!apiUrlOk()) return;
   const hint = document.getElementById('wa-test-hint');
-  hint.textContent = 'Enviando factura de prueba...';
+  if (realSend && !confirm('Esto enviará una factura de prueba REAL al grupo de WhatsApp. ¿Continuar?')) return;
+  hint.textContent = realSend ? 'Enviando factura real de prueba...' : 'Simulando prueba...';
   try{
     const grupoJid = document.getElementById('wa-test-grupo').value || undefined;
-    const data = await apiFetch('/api/whatsapp-test', { method: 'POST', body: JSON.stringify(grupoJid ? { grupoJid } : {}) });
-    hint.textContent = data.success ? 'Factura de prueba enviada.' : 'El bot respondió con error: ' + JSON.stringify(data.bot || {});
+    const payload = { ...(grupoJid ? { grupoJid } : {}), ...(realSend ? { confirmRealSend: true } : {}) };
+    const data = await apiFetch('/api/whatsapp-test', { method: 'POST', body: JSON.stringify(payload) });
+    hint.textContent = data.simulated ? `Simulación completada (${data.testId}); no se llamó al bot.` : (data.success ? `Prueba real enviada (${data.testId}).` : 'El bot respondió con error: ' + JSON.stringify(data.bot || {}));
     hint.className = 'hint ' + (data.success ? 'ok' : 'err');
   }catch(e){
     showToast('Error en envío de prueba: ' + e.message, true);
@@ -1069,7 +1072,7 @@ async function vaciarWhatsAppPendientes(){
   if (!confirm('¿Descartar TODOS los pendientes/reprogramados de la cola?')) return;
   try{
     const data = await apiFetch('/api/whatsapp-vaciar-pendientes', { method: 'POST', body: JSON.stringify({}) });
-    showToast('Descartados: ' + (data.descartados || 0));
+    showToast('Descartados: ' + (data.descartados || 0) + (data.quedanPendientes ? '. Quedan más; repite la acción para continuar.' : '. Cola pendiente vacía.'));
     loadWhatsAppQueue().catch(() => {});
   }catch(e){
     showToast('No se pudo vaciar: ' + e.message, true);

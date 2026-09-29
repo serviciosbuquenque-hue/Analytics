@@ -517,7 +517,7 @@
         <div class="modal-section-title">Estado y grupo</div>
         <label class="check"><input type="checkbox" id="wa-enabled"> Bot habilitado</label>
         <label class="check"><input type="checkbox" id="wa-grupo-enabled"> Enviar factura al grupo</label>
-        <label class="check"><input type="checkbox" id="wa-grupo-sync" checked> Sincronizar factura con el DM (si hay mensaje programado, la factura espera a su hora; fuera de horario no sale sola)</label>
+        <label class="check"><input type="checkbox" id="wa-grupo-sync"> Sincronizar factura con el DM</label>
         <label class="check"><input type="checkbox" id="wa-dryrun"> Modo prueba en seco (no llama al bot)</label>
         <label>Grupo de pedidos (JID)
           <input type="text" id="wa-grupo-jid" placeholder="1203630...@g.us">
@@ -532,9 +532,8 @@
       </div>
       <div class="form-card">
         <div class="modal-section-title">Mensajes a clientes (fase 2, apagado)</div>
-        <p class="hint warn">Solo a reincidentes. No desactives "solo reincidentes": los reportes banean el número.</p>
+        <p class="hint warn">Solo clientes con compras previas. Límite inicial automático de 10 DMs diarios, aumento semanal gradual y separación mínima de 90 segundos. Destinos permitidos inicialmente: Cuba (+53).</p>
         <label class="check"><input type="checkbox" id="wa-cliente-enabled"> Habilitar DMs a clientes</label>
-        <label class="check"><input type="checkbox" id="wa-only-reincidentes" checked> Solo clientes reincidentes</label>
         <label>Plantillas (una por línea, usa {nombre} {order} {total})
           <textarea id="wa-templates" rows="3" placeholder="Hola {nombre}, tu pedido {order} va en camino"></textarea>
         </label>
@@ -545,8 +544,9 @@
           </div>
         </label>
         <label>Tope diario de DMs
-          <input type="number" id="wa-max-dia" placeholder="80" min="0">
+          <input type="number" id="wa-max-dia" placeholder="80" min="1" max="1000">
         </label>
+        <p class="hint" id="wa-warmup-hint">Los DMs permanecen apagados hasta completar las verificaciones de seguridad.</p>
         <label>Espera antes de escribir al cliente (segundos)
           <div style="display:flex;gap:8px;">
             <input type="number" id="wa-delay-min" placeholder="60" min="0" style="width:100%;">
@@ -560,9 +560,10 @@
           <select id="wa-test-grupo"><option value="">— usa el grupo configurado —</option></select>
         </label>
         <div class="form-actions">
-          <button class="btn btn-primary" id="wa-test" type="button">Enviar factura de prueba</button>
+          <button class="btn btn-primary" id="wa-test" type="button">Simular prueba</button>
+          <button class="btn btn-ghost" id="wa-test-real" type="button">Enviar prueba real…</button>
         </div>
-        <p class="hint" id="wa-test-hint">Manda una factura TEST al grupo sin crear pedido.</p>
+        <p class="hint" id="wa-test-hint">La simulación no contacta WhatsApp. El envío real requiere confirmación.</p>
       </div>
       <div class="form-card">
         <div class="modal-section-title">Cola de envíos</div>
