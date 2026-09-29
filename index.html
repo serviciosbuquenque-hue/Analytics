@@ -194,6 +194,10 @@
 
       <div class="nav-section">
         <span class="nav-section-label">Sistema</span>
+        <button class="nav-item" data-view="whatsapp">
+          <span class="nav-ico"><i class="fa-brands fa-whatsapp"></i></span> WhatsApp
+          <span class="nav-badge" id="badge-whatsapp" hidden>0</span>
+        </button>
         <button class="nav-item" data-view="config">
           <span class="nav-ico"><i class="fa-solid fa-plug-circle-bolt"></i></span> Conexión
         </button>
@@ -500,6 +504,78 @@
           <button class="btn btn-ghost" id="notif-load" type="button">Recargar actual</button>
         </div>
         <p class="hint" id="notif-hint">Carga la notificación actual del backend y edítala aquí.</p>
+      </div>
+    </section>
+
+    <!-- ===================== WHATSAPP ===================== -->
+    <section class="view" id="view-whatsapp">
+      <header class="view-header">
+        <h2>WhatsApp</h2>
+        <p>Factura automática al grupo de pedidos y (fase 2) mensajes a clientes reincidentes. El panel habla solo con el backend; el secreto del bot nunca llega al navegador.</p>
+      </header>
+      <div class="form-card">
+        <div class="modal-section-title">Estado y grupo</div>
+        <label class="check"><input type="checkbox" id="wa-enabled"> Bot habilitado</label>
+        <label class="check"><input type="checkbox" id="wa-grupo-enabled"> Enviar factura al grupo</label>
+        <label class="check"><input type="checkbox" id="wa-dryrun"> Modo prueba en seco (no llama al bot)</label>
+        <label>Grupo de pedidos (JID)
+          <input type="text" id="wa-grupo-jid" placeholder="1203630...@g.us">
+        </label>
+        <div class="form-actions">
+          <button class="btn btn-primary" id="wa-save" type="button">Guardar</button>
+          <button class="btn btn-ghost" id="wa-load" type="button">Recargar</button>
+          <button class="btn btn-ghost" id="wa-grupos" type="button">Cargar grupos</button>
+        </div>
+        <p class="hint" id="wa-hint">Carga la configuración actual del backend.</p>
+        <div id="wa-grupos-list"></div>
+      </div>
+      <div class="form-card">
+        <div class="modal-section-title">Mensajes a clientes (fase 2, apagado)</div>
+        <p class="hint warn">Solo a reincidentes. No desactives "solo reincidentes": los reportes banean el número.</p>
+        <label class="check"><input type="checkbox" id="wa-cliente-enabled"> Habilitar DMs a clientes</label>
+        <label class="check"><input type="checkbox" id="wa-only-reincidentes" checked> Solo clientes reincidentes</label>
+        <label>Plantillas (una por línea, usa {nombre} {order} {total})
+          <textarea id="wa-templates" rows="3" placeholder="Hola {nombre}, tu pedido {order} va en camino"></textarea>
+        </label>
+        <label>Horario permitido (Habana)
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="wa-horario-ini" placeholder="09:00" style="width:100%;">
+            <input type="text" id="wa-horario-fin" placeholder="21:00" style="width:100%;">
+          </div>
+        </label>
+        <label>Tope diario de DMs
+          <input type="number" id="wa-max-dia" placeholder="80" min="0">
+        </label>
+        <label>Espera antes de escribir al cliente (segundos)
+          <div style="display:flex;gap:8px;">
+            <input type="number" id="wa-delay-min" placeholder="60" min="0" style="width:100%;">
+            <input type="number" id="wa-delay-max" placeholder="180" min="0" style="width:100%;">
+          </div>
+        </label>
+      </div>
+      <div class="form-card">
+        <div class="modal-section-title">Envío de prueba</div>
+        <label>Grupo destino
+          <select id="wa-test-grupo"><option value="">— usa el grupo configurado —</option></select>
+        </label>
+        <div class="form-actions">
+          <button class="btn btn-primary" id="wa-test" type="button">Enviar factura de prueba</button>
+        </div>
+        <p class="hint" id="wa-test-hint">Manda una factura TEST al grupo sin crear pedido.</p>
+      </div>
+      <div class="form-card">
+        <div class="modal-section-title">Cola de envíos</div>
+        <div class="form-actions">
+          <button class="btn btn-ghost" id="wa-queue-load" type="button">Recargar cola</button>
+        </div>
+        <div id="wa-queue-list"><p class="hint">Sin cargar todavía.</p></div>
+      </div>
+      <div class="form-card">
+        <div class="modal-section-title">Fallidos (escríbeles manual)</div>
+        <div class="form-actions">
+          <button class="btn btn-ghost" id="wa-fallidos-load" type="button">Recargar fallidos</button>
+        </div>
+        <div id="wa-fallidos-list"><p class="hint">Sin cargar todavía.</p></div>
       </div>
     </section>
 

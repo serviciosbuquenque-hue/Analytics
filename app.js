@@ -533,6 +533,7 @@ function goToView(view){
   if (view === 'pedidos') loadPedidosSection();
   if (view === 'usuarios'){ loadUsuarios(); loadClientes(); }
   if (view === 'notificaciones') loadNotificationBanner();
+  if (view === 'whatsapp') loadWhatsApp();
   if (view === 'config') loadCloudinaryUsage();
   requestAnimationFrame(refreshAllSegTabsFade);
 }
@@ -664,6 +665,13 @@ document.getElementById('cfg-save').addEventListener('click', async () => {
 
 document.getElementById('notif-save')?.addEventListener('click', saveNotificationBanner);
 document.getElementById('notif-load')?.addEventListener('click', loadNotificationBanner);
+
+document.getElementById('wa-save')?.addEventListener('click', saveWhatsAppConfig);
+document.getElementById('wa-load')?.addEventListener('click', loadWhatsApp);
+document.getElementById('wa-grupos')?.addEventListener('click', loadWhatsAppGrupos);
+document.getElementById('wa-test')?.addEventListener('click', sendWhatsAppTest);
+document.getElementById('wa-queue-load')?.addEventListener('click', loadWhatsAppQueue);
+document.getElementById('wa-fallidos-load')?.addEventListener('click', loadWhatsAppFallidos);
 
 function initConfigFields(){
   document.getElementById('cfg-api-url').value = state.apiUrl;
@@ -809,6 +817,168 @@ async function saveNotificationBanner(){
     hint.className = 'hint err';
   }
 }
+
+/* ================================================================
+   WHATSAPP  ->  /api/whatsapp-config|grupos|test|queue|fallidos
+   El panel solo habla con el backend (proxy con requireAuth); el secreto
+   del bot nunca llega al navegador.
+   ================================================================ */
+
+function setWhatsAppHint(text, cls){
+  const hint = document.getElementById('wa-hint');
+  if (!hint) return;
+  hint.textContent = text;
+  hint.className = 'hint' + (cls ? ' ' + cls : '');
+}
+
+async function loadWhatsApp(){
+  if (!apiUrlOk()) return;
+  setWhatsAppHint('Cargando configuración...');
+  try{
+    const data = await apiFetch('/api/whatsapp-config');
+    const cfg = data.config || {};
+    document.getElementById('wa-enabled').checked = cfg.enabled !== false;
+    document.getElementById('wa-grupo-enabled').checked = cfg.grupoEnabled !== false;
+    document.getElementById('wa-dryrun').checked = cfg.dryRun === true;
+    document.getElementById('wa-grupo-jid').value = cfg.grupoJid || '';
+    document.getElementById('wa-cliente-enabled').checked = cfg.clienteEnabled === true;
+    document.getElementById('wa-only-reincidentes').checked = cfg.onlyReincidentes !== false;
+    document.getElementById('wa-templates').value = Array.isArray(cfg.templates) ? cfg.templates.join('\n') : '';
+    document.getElementById('wa-horario-ini').value = cfg.horarioInicio || '09:00';
+    document.getElementById('wa-horario-fin').value = cfg.horarioFin || '21:00';
+    document.getElementById('wa-max-dia').value = cfg.maxPorDia ?? 80;
+    document.getElementById('wa-delay-min').value = cfg.delayMinSec ?? 60;
+    document.getElementById('wa-delay-max').value = cfg.delayMaxSec ?? 180;
+    setWhatsAppHint(cfg.dryRun ? 'Modo prueba en seco activo: no se llama al bot.' : 'Configuración cargada.', cfg.dryRun ? 'warn' : 'ok');
+    loadWhatsAppQueue().catch(() => {});
+    loadWhatsAppFallidos().catch(() => {});
+  }catch(e){
+    showToast('Error cargando WhatsApp: ' + e.message, true);
+    setWhatsAppHint('No se pudo cargar la configuración.', 'err');
+  }
+}
+
+async function saveWhatsAppConfig(){
+  if (!apiUrlOk()) return;
+  const payload = {
+    enabled: document.getElementById('wa-enabled').checked,
+    grupoEnabled: document.getElementById('wa-grupo-enabled').checked,
+    dryRun: document.getElementById('wa-dryrun').checked,
+    grupoJid: document.getElementById('wa-grupo-jid').value.trim(),
+    clienteEnabled: document.getElementById('wa-cliente-enabled').checked,
+    onlyReincidentes: document.getElementById('wa-only-reincidentes').checked,
+    templates: document.getElementById('wa-templates').value.split('\n').map(s => s.trim()).filter(Boolean),
+    horarioInicio: document.getElementById('wa-horario-ini').value.trim() || '09:00',
+    horarioFin: document.getElementById('wa-horario-fin').value.trim() || '21:00',
+    maxPorDia: Math.max(0, parseInt(document.getElementById('wa-max-dia').value, 10) || 0),
+    delayMinSec: Math.max(0, parseInt(document.getElementById('wa-delay-min').value, 10) || 0),
+    delayMaxSec: Math.max(0, parseInt(document.getElementById('wa-delay-max').value, 10) || 0),
+  };
+  try{
+    await apiFetch('/api/whatsapp-config', { method: 'PUT', body: JSON.stringify(payload) });
+    showToast('Configuración de WhatsApp guardada.');
+    setWhatsAppHint('Guardada correctamente.', 'ok');
+  }catch(e){
+    showToast('Error guardando WhatsApp: ' + e.message, true);
+    setWhatsAppHint('No se pudo guardar.', 'err');
+  }
+}
+
+async function loadWhatsAppGrupos(){
+  if (!apiUrlOk()) return;
+  const list = document.getElementById('wa-grupos-list');
+  const select = document.getElementById('wa-test-grupo');
+  list.innerHTML = '<p class="hint">Cargando grupos...</p>';
+  try{
+    const data = await apiFetch('/api/whatsapp-grupos');
+    const grupos = data.grupos || [];
+    if (!grupos.length){
+      list.innerHTML = '<p class="hint">Sin grupos vinculados (¿bot conectado?).</p>';
+      return;
+    }
+    list.innerHTML = grupos.map(g =>
+      '<div class="wa-row"><span>' + escapeHtml(g.nombre || 'Sin nombre') + '</span><span>' + (g.participantes || 0) + ' miembros</span></div>'
+    ).join('');
+    select.innerHTML = '<option value="">— usa el grupo configurado —</option>' + grupos.map(g =>
+      '<option value="' + escapeHtml(g.jid) + '">' + escapeHtml(g.nombre || g.jid) + '</option>'
+    ).join('');
+  }catch(e){
+    showToast('Error cargando grupos: ' + e.message, true);
+    list.innerHTML = '<p class="hint">No se pudieron cargar los grupos.</p>';
+  }
+}
+
+async function sendWhatsAppTest(){
+  if (!apiUrlOk()) return;
+  const hint = document.getElementById('wa-test-hint');
+  hint.textContent = 'Enviando factura de prueba...';
+  try{
+    const grupoJid = document.getElementById('wa-test-grupo').value || undefined;
+    const data = await apiFetch('/api/whatsapp-test', { method: 'POST', body: JSON.stringify(grupoJid ? { grupoJid } : {}) });
+    hint.textContent = data.success ? 'Factura de prueba enviada.' : 'El bot respondió con error: ' + JSON.stringify(data.bot || {});
+    hint.className = 'hint ' + (data.success ? 'ok' : 'err');
+  }catch(e){
+    showToast('Error en envío de prueba: ' + e.message, true);
+    hint.textContent = 'No se pudo enviar la prueba.';
+    hint.className = 'hint err';
+  }
+}
+
+function waStatusLabel(status){
+  const map = { pending: 'pendiente', sending: 'enviando', sent: 'enviado', rescheduled: 'reprogramado', skipped: 'omitido', failed: 'fallido', needs_review: 'revisar' };
+  if (!status) return '—';
+  for (const k of Object.keys(map)) if (String(status).startsWith(k)) return map[k];
+  return String(status);
+}
+
+async function loadWhatsAppQueue(){
+  if (!apiUrlOk()) return;
+  const box = document.getElementById('wa-queue-list');
+  try{
+    const data = await apiFetch('/api/whatsapp-queue');
+    const items = data.items || [];
+    if (!items.length){ box.innerHTML = '<p class="hint">Cola vacía.</p>'; return; }
+    box.innerHTML = items.slice(0, 30).map(j =>
+      '<div class="wa-row"><span>#' + escapeHtml(j.orderNumber || j.id) + ' · ' + escapeHtml(j.tipo || '') + '</span><span>' + escapeHtml(waStatusLabel(j.status)) + '</span></div>'
+    ).join('');
+  }catch(e){ box.innerHTML = '<p class="hint">No se pudo cargar la cola.</p>'; }
+}
+
+async function loadWhatsAppFallidos(){
+  if (!apiUrlOk()) return;
+  const box = document.getElementById('wa-fallidos-list');
+  const badge = document.getElementById('badge-whatsapp');
+  try{
+    const data = await apiFetch('/api/whatsapp-fallidos');
+    const items = data.items || [];
+    if (badge){ badge.hidden = !items.length; badge.textContent = String(items.length); }
+    if (!items.length){ box.innerHTML = '<p class="hint">Sin fallidos. Bien.</p>'; return; }
+    box.innerHTML = items.map(j => {
+      const tel = String((j.payload && (j.payload.telefonoComprador || j.payload.telefono)) || '').replace(/\D/g, '');
+      const wa = tel ? ' <a href="https://wa.me/' + tel + '" target="_blank" rel="noopener">escribir manual</a>' : '';
+      const acciones = (j.status === 'failed' || j.status === 'needs_review')
+        ? ' <button type="button" class="btn btn-ghost" data-wa-retry="' + escapeHtml(j.id) + '">Reintentar</button>' +
+          ' <button type="button" class="btn btn-ghost" data-wa-dismiss="' + escapeHtml(j.id) + '">Descartar</button>'
+        : '';
+      return '<div class="wa-row"><span>#' + escapeHtml(j.orderNumber || j.id) + ' · ' + escapeHtml(waStatusLabel(j.status)) + ' · ' + escapeHtml(j.lastError || 'error') + '</span><span>' + wa + acciones + '</span></div>';
+    }).join('');
+  }catch(e){ box.innerHTML = '<p class="hint">No se pudieron cargar los fallidos.</p>'; }
+}
+
+document.getElementById('wa-fallidos-list')?.addEventListener('click', async (e) => {
+  const retryBtn = e.target.closest && e.target.closest('[data-wa-retry]');
+  const dismissBtn = e.target.closest && e.target.closest('[data-wa-dismiss]');
+  const btn = retryBtn || dismissBtn;
+  if (!btn || !apiUrlOk()) return;
+  const id = retryBtn ? retryBtn.dataset.waRetry : dismissBtn.dataset.waDismiss;
+  const path = retryBtn ? '/api/whatsapp-retry' : '/api/whatsapp-dismiss';
+  try{
+    await apiFetch(path, { method: 'POST', body: JSON.stringify({ id }) });
+    showToast(retryBtn ? 'Reintento encolado.' : 'Descartado.');
+    loadWhatsAppFallidos();
+    loadWhatsAppQueue();
+  }catch(err){ showToast('Error: ' + err.message, true); }
+});
 
 /* ================================================================
    INVENTARIO (PRODUCTOS)  ->  /api/products
