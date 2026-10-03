@@ -616,6 +616,8 @@ svg.chart-hovering .flow-node:not(.is-active){ opacity: .35; }
 .btn-ghost:hover{ background: var(--surface-3); }
 .btn-danger{ background: rgba(240,84,106,.12); border-color: rgba(240,84,106,.35); color: var(--red); }
 .btn-danger:hover{ background: rgba(240,84,106,.2); }
+.btn:disabled{ opacity:.55; cursor:not-allowed; }
+.btn:disabled:hover{ filter:none; }
 .btn-small{ padding: 6px 11px; font-size:12px; }
 .file-btn{ display:inline-flex; align-items:center; cursor:pointer; }
 

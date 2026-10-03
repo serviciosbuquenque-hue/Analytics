@@ -2944,6 +2944,54 @@ document.getElementById('usr-search')?.addEventListener('input', debounce((event
   renderUsuarios();
 }, 150));
 
+/* --------------------- Limpiar el registro de estadísticas ---------------------
+   Borra SOLO el nodo /estadisticas de la RTDB secundaria (registro de visitas).
+   El backend no toca /pedidos, /pedidos_asignados, /known_ips ni el catálogo, así
+   que los pedidos, clientes, inventario e ingresos quedan intactos. */
+let limpiandoEstadisticas = false;
+
+async function limpiarEstadisticas(){
+  if (limpiandoEstadisticas) return;
+  const total = Array.isArray(state.usuarios) ? state.usuarios.length : 0;
+  if (total === 0){
+    showToast('No hay registros de estadísticas que borrar.');
+    return;
+  }
+
+  const confirmado = confirm(
+    `Se eliminarán ${total} registro(s) de visitas del nodo /estadisticas (base de datos secundaria).\n\n` +
+    'NO se borra nada más: pedidos, clientes, inventario, packs, ingresos ni el historial de IPs.\n\n' +
+    'Esta acción no se puede deshacer. ¿Continuar?'
+  );
+  if (!confirmado) return;
+
+  limpiandoEstadisticas = true;
+  const btn = document.getElementById('usr-clear-stats');
+  const textoOriginal = btn ? btn.innerHTML : '';
+  if (btn){ btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Limpiando...'; }
+
+  try{
+    const data = await apiFetch('/api/clear-statistics', { method: 'POST' });
+    state.usuarios = [];
+    state.usuariosPage = 1;
+    state.usuariosQuery = '';
+    const search = document.getElementById('usr-search');
+    if (search) search.value = '';
+    renderUsuarios();
+    showToast((data && data.message) || 'Estadísticas limpiadas correctamente.');
+    // Resumen también lee /estadisticas (tarjeta "Usuarios registrados" y el
+    // gráfico de horas), así que hay que refrescarlo para que no muestre nada viejo.
+    await loadResumen().catch(() => {});
+  }catch(e){
+    showToast('Error limpiando estadísticas: ' + e.message, true);
+  }finally{
+    limpiandoEstadisticas = false;
+    if (btn){ btn.disabled = false; btn.innerHTML = textoOriginal; }
+  }
+}
+
+document.getElementById('usr-clear-stats')?.addEventListener('click', limpiarEstadisticas);
+
 /* ------------------------- Pestañas Visitas / Clientes ------------------------- */
 
 document.querySelectorAll('#usr-tabs .seg-tab').forEach(btn => {

@@ -13,7 +13,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Analytics">
-<link rel="stylesheet" href="styles.css?v=9">
+<link rel="stylesheet" href="styles.css?v=10">
 </head>
 <body>
 
@@ -751,7 +751,9 @@
         <div class="header-actions" style="margin-bottom:14px;">
           <input type="search" id="usr-search" class="search" placeholder="Buscar usuario, IP, país, navegador...">
           <button class="btn btn-ghost" id="usr-refresh">↻ Actualizar</button>
+          <button class="btn btn-danger" id="usr-clear-stats" type="button"><i class="fa-solid fa-eraser"></i> Limpiar estadísticas</button>
         </div>
+        <p class="hint warn" style="margin-bottom:14px;">Limpiar estadísticas borra únicamente los registros de visitas guardados en /estadisticas de la base de datos secundaria. No afecta pedidos, clientes, inventario, packs ni los ingresos ya registrados.</p>
         <div class="usr-panel">
           <div class="usr-summary-grid">
             <div class="usr-stat-card">
