@@ -1862,6 +1862,88 @@ function pedidosSearchTerm(){
   return normalizeText(document.getElementById('pedidos-search').value.trim());
 }
 
+/* ------------------------- Búsqueda por precio -------------------------
+   El mismo buscador de texto también entiende montos: "77.20", "77,20",
+   "$77.20", "77" o "1.234,56". Sirve para localizar un pago concreto sin
+   saber contra qué nombre o teléfono se hizo. */
+
+// Convierte lo que el usuario escribió en un número, tolerando el símbolo de
+// moneda ($ 77.20), el decimal con coma (77,20) y los separadores de miles
+// (1,234.56 y 1.234,56). Devuelve null si no hay un número reconocible.
+function parseTerminoPrecio(raw){
+  let s = String(raw == null ? '' : raw).trim().toLowerCase();
+  if (!s) return null;
+
+  s = s.replace(/\b(usd|cuc|cup|pesos?|dollars?)\b/g, ' ');
+  s = s.replace(/[^0-9.,]/g, '');
+  if (!/\d/.test(s)) return null;
+
+  const punto = s.lastIndexOf('.');
+  const coma = s.lastIndexOf(',');
+
+  if (punto >= 0 && coma >= 0){
+    // "1.234,56" o "1,234.56": el separador que aparece de último es el decimal.
+    const decimal = Math.max(punto, coma);
+    s = s.slice(0, decimal).replace(/[.,]/g, '') + '.' + s.slice(decimal + 1);
+  } else if (punto >= 0 || coma >= 0){
+    const sep = punto >= 0 ? '.' : ',';
+    const partes = s.split(sep);
+    // Un solo separador con exactamente 3 dígitos detrás es de miles (1.234);
+    // con otra cantidad de dígitos es decimal (77.20 → 77.20).
+    const esMiles = partes.length > 2 || partes[1].length === 3;
+    s = esMiles ? partes.join('') : partes[0] + '.' + partes[1];
+  }
+
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+// Valores (en centavos) por los que un pedido puede coincidir con el monto
+// buscado. Se comparan en centavos para evitar los errores de coma flotante
+// típicos (0.1 + 0.2). Incluye la suma de los productos como alternativa al
+// total guardado: el total lo manda el cliente al crear el pedido y el backend
+// lo recalcula al editar productos, así que con uno solo se podrían escapar pagos.
+function centavosPedido(p){
+  const valores = new Set();
+
+  const total = Number(p.precio_compra_total);
+  if (Number.isFinite(total)) valores.add(Math.round(total * 100));
+
+  let suma = 0;
+  let huboItems = false;
+  (Array.isArray(p.compras) ? p.compras : []).forEach(item => {
+    if (!item) return;
+    const unit = Number(item.unitPrice ?? item.precio);
+    const cant = Number(item.quantity ?? item.cantidad);
+    if (!Number.isFinite(unit) || !Number.isFinite(cant)) return;
+    suma += unit * cant;
+    huboItems = true;
+  });
+  if (huboItems) valores.add(Math.round(suma * 100));
+
+  return valores;
+}
+
+function coincidePrecioPedido(p, term){
+  const n = parseTerminoPrecio(term);
+  if (n === null) return false; // el término no es un monto ("juan", "BS-42"...)
+
+  const centavos = centavosPedido(p);
+  if (!centavos.size) return false;
+
+  // "77.20" → coincidencia exacta al centavo.
+  if (/\d[.,]\d/.test(term)) return centavos.has(Math.round(n * 100));
+
+  // "77" → coincidencia parcial, para no tener que acordarse de los centavos.
+  // Con un solo dígito ("7") se cae a exacto, que si no sería demasiado ruido.
+  const digitos = String(Math.round(n));
+  if (digitos.length < 2) return centavos.has(Math.round(n * 100));
+  for (const c of centavos){
+    if (String(c).includes(digitos)) return true;
+  }
+  return false;
+}
+
 function getPedidoNumero(p){
   return String(p.numero_orden || p.orderNumber || p.order_number || '').trim();
 }
@@ -1875,6 +1957,9 @@ function getPedidoNumeroValor(p){
 
 function coincideBusquedaPedido(p, term){
   if (!term) return true;
+  // Primero el monto: "77.20" o "$77,20" deben encontrar el pago aunque el
+  // término no coincida con nombre, teléfono, orden ni producto.
+  if (coincidePrecioPedido(p, term)) return true;
   const nombre = normalizeText(p.nombre_comprador);
   const telefono = normalizeText(p.telefono_comprador);
   const orden = normalizeText(getPedidoNumero(p));
@@ -1893,6 +1978,33 @@ function getOriginalPedidoId(p){
 
 function getPedidoFecha(p){
   return p.fecha_registro_backend || p.fecha_asignacion || p.fecha_hora_entrada || null;
+}
+
+/* ------------------------- Filtro por día (string) -------------------------
+   El backend guarda las fechas como "YYYY-MM-DD HH:mm:ss" en hora de La Habana
+   (nowInTimeZone). Ese formato NO es ISO, así que Safari/iOS lo parsea como
+   NaN y un filtro basado en new Date() no mostraría nada en el móvil, que es
+   justo donde se instala la PWA. Por eso el filtro por día compara el fragmento
+   YYYY-MM-DD como texto: sin conversiones de zona horaria y sin desfase de un
+   día cuando el registro cae cerca de medianoche. */
+
+function diaDeFechaString(valor){
+  if (!valor) return null;
+  const s = String(valor).trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return m[0];
+  const d = new Date(s);
+  if (isNaN(d)) return null;
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function fechaPedidoDia(p){
+  // Fecha en que se hizo el pedido. En la pestaña "Nuevos" es la columna "Fecha";
+  // en "Guardados"/"Seguimiento" viene del pedido original que el backend hidrata
+  // (pedido_origen_id). El fallback cubre registros viejos sin fecha_hora_entrada
+  // para que no desaparezcan al filtrar.
+  return diaDeFechaString(p.fecha_hora_entrada || p.fecha_registro_backend || p.fecha_asignacion);
 }
 
 function normalizePedidoState(p){
@@ -1946,6 +2058,9 @@ document.querySelectorAll('#pedidos-tabs .seg-tab').forEach(btn => {
     document.getElementById('pedidos-panel-seguimiento').classList.toggle('active', pedidosTabActual === 'seguimiento');
     if (pedidosTabActual === 'guardados') renderPedidosGuardados();
     if (pedidosTabActual === 'seguimiento') renderPedidosSeguimiento();
+    // "Nuevos" no se re-renderiza al cambiar de pestaña (ya está pintado), pero el
+    // contador del filtro sí debe seguir a la pestaña visible.
+    pintarContadorPedidos();
   });
 });
 
@@ -1954,7 +2069,9 @@ document.querySelectorAll('#pedidos-tabs .seg-tab').forEach(btn => {
 function renderPedidosNuevos(){
   const term = pedidosSearchTerm();
   const historial = [...state.pedidosNuevos, ...state.pedidosSeguimiento];
-  const list = state.pedidosNuevos.filter(p => coincideBusquedaPedido(p, term) && pasaFiltroFechaPedido(p));
+  const base = state.pedidosNuevos.filter(p => coincideBusquedaPedido(p, term));
+  const list = base.filter(pasaFiltroFechaPedido);
+  registrarConteoPedidos('nuevos', list.length, base.length);
 
   const tbody = document.getElementById('nuevos-tbody');
   tbody.innerHTML = '';
@@ -2036,7 +2153,9 @@ function renderPedidosNuevos(){
 
 function renderPedidosGuardados(){
   const term = pedidosSearchTerm();
-  const list = state.pedidosSeguimiento.filter(p => coincideBusquedaPedido(p, term) && pasaFiltroFechaPedido(p));
+  const base = state.pedidosSeguimiento.filter(p => coincideBusquedaPedido(p, term));
+  const list = base.filter(pasaFiltroFechaPedido);
+  registrarConteoPedidos('guardados', list.length, base.length);
   const tbody = document.getElementById('guardados-tbody');
   tbody.innerHTML = '';
   document.getElementById('guardados-empty').hidden = list.length !== 0;
@@ -2175,12 +2294,14 @@ function agruparPedidosPorCliente(items){
 function renderPedidosSeguimiento(flashId){
   const term = pedidosSearchTerm();
   const historial = [...state.pedidosNuevos, ...state.pedidosSeguimiento];
-  const list = state.pedidosSeguimiento.filter(p => {
+  const base = state.pedidosSeguimiento.filter(p => {
     if (!isPedidoVisibleEnSeguimiento(p)) return false;
     const key = estadoPedidoKey(p);
     const enPestaña = segTabActual === 'completado' ? key === 'completado' : key !== 'completado';
-    return enPestaña && coincideBusquedaPedido(p, term) && pasaFiltroFechaPedido(p) && pasaFiltroEntrega(p);
+    return enPestaña && coincideBusquedaPedido(p, term) && pasaFiltroEntrega(p);
   });
+  const list = base.filter(pasaFiltroFechaPedido);
+  registrarConteoPedidos('seguimiento', list.length, base.length);
 
   ordenarPedidosSeguimiento(list);
 
@@ -2362,6 +2483,63 @@ if (segSortSelect){
 
 let pedidosFiltroFecha = 'todos';
 
+// Rango personalizado (pedidosFiltroFecha === 'custom'). null en cada lado
+// significa "sin límite": solo "Desde" = desde ese día en adelante,
+// solo "Hasta" = hasta ese día.
+let pedidosRangoCustom = { desde: null, hasta: null };
+
+// "Mostrando X de Y" por pestaña. El denominador (base) es la lista ANTES del
+// filtro de fecha, para que se vea cuántos pedidos están ocultos y no solo 0.
+const pedidosConteo = {
+  nuevos: { mostrados: null, base: null },
+  guardados: { mostrados: null, base: null },
+  seguimiento: { mostrados: null, base: null }
+};
+const ETIQUETA_PEDIDOS_TAB = { nuevos: 'Nuevos', guardados: 'Guardados', seguimiento: 'Seguimiento' };
+
+function registrarConteoPedidos(clave, mostrados, base){
+  if (!pedidosConteo[clave]) return;
+  pedidosConteo[clave].mostrados = mostrados;
+  pedidosConteo[clave].base = base;
+  pintarContadorPedidos();
+}
+
+function pintarContadorPedidos(){
+  const el = document.getElementById('ped-filtro-resumen');
+  if (!el) return;
+  const c = pedidosConteo[pedidosTabActual];
+  if (!c || c.base === null){ el.textContent = ''; return; }
+
+  const etiqueta = ETIQUETA_PEDIDOS_TAB[pedidosTabActual] || '';
+  let txt = `Mostrando ${c.mostrados} de ${c.base} pedidos · ${etiqueta}`;
+
+  if (pedidosFiltroFecha === 'custom' && (pedidosRangoCustom.desde || pedidosRangoCustom.hasta)){
+    const desde = pedidosRangoCustom.desde || 'inicio';
+    const hasta = pedidosRangoCustom.hasta || 'hoy';
+    txt += ` · Rango ${desde} → ${hasta}`;
+  }
+  if (c.mostrados === 0 && c.base > 0) txt += ' · sin coincidencias para el filtro';
+
+  el.textContent = txt;
+}
+
+function limpiarCamposRangoPedidos(){
+  const desdeEl = document.getElementById('ped-fecha-desde');
+  const hastaEl = document.getElementById('ped-fecha-hasta');
+  const quitarEl = document.getElementById('ped-fecha-quitar');
+  if (desdeEl) desdeEl.value = '';
+  if (hastaEl) hastaEl.value = '';
+  if (quitarEl) quitarEl.hidden = true;
+}
+
+// Repinta las 3 tablas. Todo cambio de filtro (fecha, búsqueda, rango) pasa por
+// aquí para que el contador quede sincronizado siempre.
+function refrescarFiltrosPedidos(){
+  renderPedidosNuevos();
+  renderPedidosGuardados();
+  renderPedidosSeguimiento();
+}
+
 function esDeEstaSemana(fechaStr){
   if (!fechaStr) return false;
   const f = new Date(fechaStr);
@@ -2377,9 +2555,19 @@ function esDeEstaSemana(fechaStr){
 }
 
 function pasaFiltroFechaPedido(p){
+  if (pedidosFiltroFecha === 'custom'){
+    // Comparación de strings: en formato ISO el orden lexicográfico coincide con
+    // el cronológico, así que no hace falta construir objetos Date.
+    const dia = fechaPedidoDia(p);
+    if (!dia) return false; // registro sin ninguna fecha usable
+    if (pedidosRangoCustom.desde && dia < pedidosRangoCustom.desde) return false;
+    if (pedidosRangoCustom.hasta && dia > pedidosRangoCustom.hasta) return false;
+    return true;
+  }
   if (pedidosFiltroFecha === 'todos') return true;
   const fecha = getPedidoFecha(p);
   if (pedidosFiltroFecha === 'hoy') return fechaHoy(fecha);
+  if (pedidosFiltroFecha === 'ayer') return fechaAyer(fecha);
   if (pedidosFiltroFecha === 'semana') return esDeEstaSemana(fecha);
   if (pedidosFiltroFecha === 'mes') return esDelMesActual(fecha);
   return true;
@@ -2411,11 +2599,53 @@ function pasaFiltroEntrega(p){
 document.querySelectorAll('#pedidos-filtro-fecha .seg-tab').forEach(btn => {
   btn.addEventListener('click', () => {
     pedidosFiltroFecha = btn.dataset.pfiltro;
+    // Al elegir un preset se descarta el rango personalizado y sus campos.
+    pedidosRangoCustom = { desde: null, hasta: null };
     document.querySelectorAll('#pedidos-filtro-fecha .seg-tab').forEach(b => b.classList.toggle('active', b === btn));
-    renderPedidosNuevos();
-    renderPedidosGuardados();
-    renderPedidosSeguimiento();
+    limpiarCamposRangoPedidos();
+    refrescarFiltrosPedidos();
   });
+});
+
+/* --------------------- Rango de fechas personalizado --------------------- */
+
+document.getElementById('ped-fecha-aplicar')?.addEventListener('click', () => {
+  const desdeEl = document.getElementById('ped-fecha-desde');
+  const hastaEl = document.getElementById('ped-fecha-hasta');
+  const desde = desdeEl ? desdeEl.value : '';
+  const hasta = hastaEl ? hastaEl.value : '';
+
+  if (!desde && !hasta){
+    showToast('Selecciona al menos una fecha: "Desde" o "Hasta".', true);
+    return;
+  }
+  if (desde && hasta && desde > hasta){
+    showToast('La fecha "Desde" no puede ser posterior a "Hasta".', true);
+    return;
+  }
+
+  pedidosRangoCustom = { desde: desde || null, hasta: hasta || null };
+  pedidosFiltroFecha = 'custom';
+  // Ningún preset queda activo mientras haya un rango manual.
+  document.querySelectorAll('#pedidos-filtro-fecha .seg-tab').forEach(b => b.classList.remove('active'));
+  const quitarEl = document.getElementById('ped-fecha-quitar');
+  if (quitarEl) quitarEl.hidden = false;
+
+  refrescarFiltrosPedidos();
+
+  const c = pedidosConteo[pedidosTabActual];
+  showToast(c && c.mostrados > 0
+    ? `${c.mostrados} pedido(s) en el rango ${pedidosRangoCustom.desde || 'inicio'} → ${pedidosRangoCustom.hasta || 'hoy'}.`
+    : 'No hay pedidos en ese rango.');
+});
+
+document.getElementById('ped-fecha-quitar')?.addEventListener('click', () => {
+  pedidosRangoCustom = { desde: null, hasta: null };
+  pedidosFiltroFecha = 'todos';
+  limpiarCamposRangoPedidos();
+  const tabTodos = document.querySelector('#pedidos-filtro-fecha .seg-tab[data-pfiltro="todos"]');
+  if (tabTodos) tabTodos.classList.add('active');
+  refrescarFiltrosPedidos();
 });
 
 document.querySelectorAll('#seg-filtro-entrega .seg-tab').forEach(btn => {
@@ -2445,12 +2675,18 @@ function exportarCSV(headers, rows, filename){
 
 function exportarPedidosCSV(){
   const headers = ['Fecha', 'Orden', 'Comprador', 'Teléfono', 'Dirección', 'Total', 'Fecha entrega', 'Estado'];
+  // El CSV exporta lo mismo que se está viendo: respetando la búsqueda (incluido
+  // el monto) y el filtro de fecha activo.
+  const term = pedidosSearchTerm();
+  const pasaFiltros = p => coincideBusquedaPedido(p, term) && pasaFiltroFechaPedido(p);
   const todos = [
-    ...state.pedidosNuevos.map(p => ({ ...p, _estado: 'Nuevo' })),
-    ...state.pedidosSeguimiento.map(p => ({ ...p, _estado: MARCADOR[estadoPedidoKey(p)].textPlano }))
+    ...state.pedidosNuevos.filter(pasaFiltros).map(p => ({ ...p, _estado: 'Nuevo' })),
+    ...state.pedidosSeguimiento.filter(pasaFiltros).map(p => ({ ...p, _estado: MARCADOR[estadoPedidoKey(p)].textPlano }))
   ];
   const rows = todos.map(p => [
-    p.fecha_asignacion || p.fecha_registro_backend || '',
+    // getPedidoFecha y no fecha_asignacion: los pedidos NUEVOS no tienen
+    // fecha_asignacion, así que esa columna salía vacía para ellos.
+    getPedidoFecha(p) || '',
     getPedidoNumero(p) || '',
     p.nombre_comprador || '',
     p.telefono_comprador || '',

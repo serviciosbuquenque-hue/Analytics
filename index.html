@@ -13,7 +13,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Analytics">
-<link rel="stylesheet" href="styles.css?v=10">
+<link rel="stylesheet" href="styles.css?v=11">
 </head>
 <body>
 
@@ -645,15 +645,27 @@
         <h2>Pedidos</h2>
         <p>Pedidos nuevos recién recibidos y pedidos guardados en seguimiento. Al guardar un pedido nuevo pasa automáticamente al panel de seguimiento, donde se registra el estado y la evolución del pedido.</p>
         <div class="header-actions">
-          <input type="search" id="pedidos-search" class="search" placeholder="Buscar por comprador, teléfono u orden...">
+          <input type="search" id="pedidos-search" class="search" placeholder="Buscar por comprador, teléfono, orden o total (ej. 77.20)...">
           <button class="btn btn-ghost" id="pedidos-refresh">↻ Actualizar</button>
           <button class="btn btn-ghost" id="pedidos-export-csv">⬇ Exportar CSV</button>
         </div>
-        <div class="seg-tabs" id="pedidos-filtro-fecha">
-          <button class="seg-tab active" data-pfiltro="todos">Todos</button>
-          <button class="seg-tab" data-pfiltro="hoy">Hoy</button>
-          <button class="seg-tab" data-pfiltro="semana">Esta semana</button>
-          <button class="seg-tab" data-pfiltro="mes">Este mes</button>
+        <div id="ped-filtro-rango">
+          <div class="resu-filtro-row">
+            <div class="seg-tabs" id="pedidos-filtro-fecha">
+              <button class="seg-tab active" data-pfiltro="todos">Todos</button>
+              <button class="seg-tab" data-pfiltro="hoy">Hoy</button>
+              <button class="seg-tab" data-pfiltro="ayer">Ayer</button>
+              <button class="seg-tab" data-pfiltro="semana">Esta semana</button>
+              <button class="seg-tab" data-pfiltro="mes">Este mes</button>
+            </div>
+            <div class="resu-filtro-custom">
+              <label>Desde <input type="date" id="ped-fecha-desde"></label>
+              <label>Hasta <input type="date" id="ped-fecha-hasta"></label>
+              <button class="btn btn-ghost btn-small" id="ped-fecha-aplicar" type="button">Aplicar rango</button>
+              <button class="btn btn-ghost btn-small" id="ped-fecha-quitar" type="button" hidden>Quitar</button>
+            </div>
+          </div>
+          <p class="hint" id="ped-filtro-resumen"></p>
         </div>
         <div class="seg-tabs" id="pedidos-tabs">
           <button class="seg-tab active" data-ptab="nuevos">Nuevos <span class="seg-tab-count" id="tab-count-nuevos">0</span></button>

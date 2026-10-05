@@ -1263,6 +1263,47 @@ tr.row-saved-flash{ animation: rowSavedPulse 1000ms ease-out; }
 #view-pedidos .row-actions .icon-btn{ width: 32px; height: 32px; font-size: 12px; }
 #view-pedidos .row-actions .btn-small{ padding: 6px 10px; }
 
+/* Filtro por rango de fechas + contador de "Pedidos".
+   Reutiliza .resu-filtro-row / .resu-filtro-custom (que son genéricas, usadas
+   igual por Resumen), pero aquí hay 4 columnas: Desde, Hasta, Aplicar y Quitar.
+   Por eso se necesita el override por id: las reglas móviles existentes de
+   .resu-filtro-custom son de clase sola y no alcanzarían a esta variante. */
+#ped-filtro-rango{ margin: 10px 0 8px; }
+/* flex:0 0 auto para que los 5 presets conserven su ancho y los campos de
+   fecha bajen de línea cuando no quepan, en vez de dejar los tabs apretados. */
+#ped-filtro-rango .seg-tabs{ margin: 0; flex: 0 0 auto; }
+#ped-filtro-rango .resu-filtro-custom{
+  grid-template-columns: repeat(2, minmax(0,140px)) auto auto;
+  max-width: none;
+}
+#ped-filtro-resumen{ margin-top: 8px; }
+
+/* Tablet: la fila de presets y los campos de fecha se apilan (ya lo hace
+   .resu-filtro-row a 980px) y los botones pasan a ocupar el ancho completo. */
+@media (max-width: 980px){
+  #ped-filtro-rango .resu-filtro-custom{ grid-template-columns: 1fr 1fr; }
+  #ped-filtro-rango .resu-filtro-custom .btn{ width: 100%; grid-column: 1 / -1; }
+}
+
+/* Móvil: los 5 presets de fecha se pueden deslizar en horizontal y los campos
+   de fecha crecen un poco para que el calendario sea cómodo de tocar. */
+@media (max-width: 720px){
+  #ped-filtro-rango{ margin: 8px 0 10px; }
+  #ped-filtro-rango .resu-filtro-custom{ gap: 8px 10px; }
+  #ped-filtro-rango .resu-filtro-custom input[type="date"]{
+    padding: 9px 10px;
+    font-size: 13px;
+    min-height: 38px;
+  }
+  #ped-filtro-rango .resu-filtro-custom .btn{ padding: 9px 10px; font-size: 12.5px; }
+}
+
+/* Móviles muy angostos: los dos campos de fecha se apilan para que no queden
+   ilegibles ni se desborden. */
+@media (max-width: 400px){
+  #ped-filtro-rango .resu-filtro-custom{ grid-template-columns: 1fr; }
+}
+
 /* ============================================================
    Formularios / modales
    ============================================================ */
