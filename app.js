@@ -26,6 +26,12 @@ const state = {
   usuariosQuery: '',
   clientes: [],
   clientesQuery: '',
+  inventarioPedidos: [],
+  inventarioPedidosAt: 0,
+  inventarioPedidosError: false,
+  inventarioDemanda: new Map(),
+  inventarioVista: localStorage.getItem('panel_inventario_vista') || 'tarjetas',
+  inventarioOrden: localStorage.getItem('panel_inventario_orden') || 'urgencia',
   prodImages: [],   // imágenes en edición del modal de producto (public_id o dataURL)
   packImages: [],   // imágenes en edición del modal de pack
   invTab: 'todos',  // pestaña activa en Inventario: todos | bajo | sin | control
@@ -1119,17 +1125,31 @@ document.getElementById('wa-fallidos-list')?.addEventListener('click', async (e)
    INVENTARIO (PRODUCTOS)  ->  /api/products
    ================================================================ */
 
+async function actualizarPedidosInventario(forzar = false){
+  if (!forzar && state.inventarioPedidosAt && Date.now() - state.inventarioPedidosAt < 60000) return;
+  try{
+    state.inventarioPedidos = await cargarStockCheckPedidos(forzar);
+    state.inventarioPedidosError = false;
+  }catch(e){
+    state.inventarioPedidos = [];
+    state.inventarioPedidosError = true;
+  }
+  state.inventarioPedidosAt = Date.now();
+}
+
 async function loadProductos(force = false){
   try{
     const now = Date.now();
     const TTL = 8000;
     if (!force && state.productos && state.productos.length && state._productosCacheTime && (now - state._productosCacheTime) < TTL){
+      await actualizarPedidosInventario();
       renderProductos();
       return;
     }
     const data = await apiFetch('/api/products');
     state.productos = data.products || [];
     state._productosCacheTime = Date.now();
+    await actualizarPedidosInventario(force);
     populateProductoCategoriasDropdown();
     renderProductos();
     loadInfoMap();
@@ -1196,6 +1216,93 @@ function calcularStatsInventario(){
   return { total, conControl, unidades, valor };
 }
 
+function calcularDemandaInventario(productos, pedidos, fechaActual = new Date()){
+  const desde = new Date(fechaActual.getFullYear(), fechaActual.getMonth(), fechaActual.getDate() - 29);
+  const desde90Dias = new Date(fechaActual.getFullYear(), fechaActual.getMonth(), fechaActual.getDate() - 89);
+  const metricas = new Map((productos || []).map(producto => [String(producto.id), { unidades: 0, unidades90Dias: 0, pedidos: 0 }]));
+  (pedidos || []).forEach(pedido => {
+    const fecha = parseFechaPedidoLocal(getPedidoFecha(pedido));
+    if (!fecha || fecha < desde90Dias || fecha > fechaActual) return;
+    const reciente = fecha >= desde;
+    const compras = Array.isArray(pedido.compras) ? pedido.compras : [];
+    const contados = new Set();
+    compras.forEach(item => {
+      const producto = (productos || []).find(p => compraCoincideConProducto(item, p));
+      if (!producto) return;
+      const clave = String(producto.id);
+      const cantidad = Number(item.quantity ?? item.cantidad ?? 1) || 0;
+      const metrica = metricas.get(clave);
+      if (!metrica || cantidad <= 0) return;
+      metrica.unidades90Dias += cantidad;
+      if (reciente){
+        metrica.unidades += cantidad;
+        contados.add(clave);
+      }
+    });
+    contados.forEach(clave => metricas.get(clave).pedidos++);
+  });
+  metricas.forEach(metrica => {
+    metrica.promedioDiario = metrica.unidades / 30;
+  });
+  return metricas;
+}
+
+function prioridadInventario(producto, metrica = {}){
+  const stock = Number(producto.stock ?? 0);
+  const demanda = Number(metrica.promedioDiario || 0);
+  const plazo = Number(producto.plazo_reposicion_dias || 0);
+  const reserva = Number(producto.stock_seguridad_dias || 0);
+  if (producto.aplicar_stock && stock <= 0 && metrica.unidades90Dias > 0) return 0;
+  if (producto.aplicar_stock && demanda > 0 && plazo > 0 && stock <= demanda * (plazo + reserva)) return 1;
+  if (estadoStockProducto(producto) === 'sin') return 2;
+  if (estadoStockProducto(producto) === 'bajo') return 3;
+  if (producto.aplicar_stock && stock > 0 && metrica.unidades === 0) return 4;
+  return 5;
+}
+
+function renderInventarioInsights(){
+  const contenedor = document.getElementById('inv-insights');
+  if (!contenedor) return;
+  const señales = state.productos.map(producto => {
+    const metrica = state.inventarioDemanda.get(String(producto.id)) || { unidades: 0, unidades90Dias: 0, pedidos: 0, promedioDiario: 0 };
+    const stock = Number(producto.stock ?? 0);
+    const autonomia = metrica.promedioDiario > 0 ? stock / metrica.promedioDiario : null;
+    const plazo = Number(producto.plazo_reposicion_dias || 0);
+    const reserva = Number(producto.stock_seguridad_dias || 0);
+    const sugerido = metrica.promedioDiario > 0 && plazo > 0
+      ? Math.max(0, Math.ceil(metrica.promedioDiario * (plazo + reserva) - stock))
+      : null;
+    return { producto, metrica, autonomia, sugerido, prioridad: prioridadInventario(producto, metrica) };
+  }).filter(item => item.prioridad < 5)
+    .sort((a, b) => a.prioridad - b.prioridad || (a.autonomia ?? Infinity) - (b.autonomia ?? Infinity));
+  const totalSeñales = señales.length;
+  setText('inv-insights-count', totalSeñales ? `${totalSeñales} alerta${totalSeñales === 1 ? '' : 's'}` : 'Sin alertas');
+  const señalesVisibles = señales.slice(0, 12);
+
+  if (state.inventarioPedidosError){
+    contenedor.innerHTML = `<p class="hint warn">No se pudo cargar el historial de pedidos. Se muestran las señales de stock disponibles, sin estimar demanda.</p>`;
+  }
+  if (!señalesVisibles.length){
+    contenedor.innerHTML = state.inventarioPedidosError
+      ? `<p class="hint warn">No se pudo cargar el historial de pedidos para calcular reposición.</p>`
+      : `<p class="hint">Sin alertas de reposición o productos sin movimiento en los últimos 30 días.</p>`;
+    return;
+  }
+  contenedor.innerHTML = señalesVisibles.map(({ producto, metrica, autonomia, sugerido, prioridad }) => {
+    let estado = 'Sin movimiento';
+    let detalle = `${producto.stock ?? 0} en stock · ${metrica.unidades} und. pedidas en 30 días`;
+    let clase = 'info';
+    if (prioridad === 0){ estado = 'Agotado con demanda'; clase = 'danger'; if (!metrica.unidades) detalle += ` · ${metrica.unidades90Dias} und. en 90 días`; }
+    else if (prioridad === 1){ estado = 'Reponer pronto'; clase = 'warn'; }
+    else if (prioridad === 2){ estado = 'Sin stock'; clase = 'danger'; }
+    else if (prioridad === 3){ estado = 'Stock bajo'; clase = 'warn'; }
+    if (autonomia !== null) detalle += ` · autonomía ≈ ${autonomia.toFixed(1)} días`;
+    if (sugerido !== null) detalle += sugerido > 0 ? ` · sugerido: ${sugerido} und.` : ' · stock cubre plazo y reserva';
+    if (producto.aplicar_stock && !Number(producto.plazo_reposicion_dias || 0) && metrica.unidades > 0) detalle += ' · configura plazo de reposición';
+    return `<div class="mini-row inventory-insight-row"><span class="k">${escapeHtml(producto.nombre)} <span class="pill pill-${clase}">${estado}</span> · ${escapeHtml(detalle)}</span><button class="btn btn-ghost btn-small" type="button" data-inv-insight-edit="${escapeHtml(String(producto.id))}">Ver producto</button></div>`;
+  }).join('');
+}
+
 function renderInventarioStats(){
   const cont = document.getElementById('inv-stats');
   if (!cont) return;
@@ -1225,7 +1332,7 @@ function renderInventarioStats(){
     <div class="stat-chip">
       <span class="stat-chip-ico stat-chip-ico-accent"><i class="fa-solid fa-sack-dollar"></i></span>
       <div class="stat-chip-body">
-        <span class="stat-chip-label">Valor del inventario</span>
+        <span class="stat-chip-label" title="Stock actual multiplicado por precio de venta; no es costo ni ganancia">Valor potencial a precio de venta</span>
         <strong class="stat-chip-value">$${valor.toFixed(2)}</strong>
       </div>
     </div>`;
@@ -1256,9 +1363,32 @@ function renderProductos(){
   if (state.invTab === 'sin') filtrados = conEstado.filter(x => x.estado === 'sin');
   if (state.invTab === 'control') filtrados = conEstado.filter(x => x.p.aplicar_stock);
 
-  const list = filtrados
+  const listBase = filtrados
     .map(x => x.p)
     .filter(p => !term || normalizeText(p.nombre).includes(term));
+  state.inventarioDemanda = calcularDemandaInventario(state.productos, state.inventarioPedidos);
+  const sortMode = document.getElementById('inv-sort')?.value || state.inventarioOrden;
+  const list = listBase.sort((a, b) => {
+    const ma = state.inventarioDemanda.get(String(a.id)) || { unidades: 0, promedioDiario: 0 };
+    const mb = state.inventarioDemanda.get(String(b.id)) || { unidades: 0, promedioDiario: 0 };
+    if (sortMode === 'nombre') return String(a.nombre).localeCompare(String(b.nombre), 'es', { sensitivity: 'base' });
+    if (sortMode === 'stock_asc') return Number(a.stock || 0) - Number(b.stock || 0);
+    if (sortMode === 'stock_desc') return Number(b.stock || 0) - Number(a.stock || 0);
+    if (sortMode === 'ventas_desc') return mb.unidades - ma.unidades;
+    const urgencia = prioridadInventario(a, ma) - prioridadInventario(b, mb);
+    if (urgencia) return urgencia;
+    const diasA = ma.promedioDiario > 0 ? Number(a.stock || 0) / ma.promedioDiario : Infinity;
+    const diasB = mb.promedioDiario > 0 ? Number(b.stock || 0) / mb.promedioDiario : Infinity;
+    return diasA - diasB;
+  });
+  renderInventarioInsights();
+
+  grid.hidden = false;
+  grid.classList.toggle('inventory-grid-table-mode', state.inventarioVista === 'tabla');
+  document.querySelectorAll('[data-inv-view]').forEach(button => {
+    button.classList.toggle('active', button.dataset.invView === state.inventarioVista);
+    button.setAttribute('aria-pressed', String(button.dataset.invView === state.inventarioVista));
+  });
 
   // Construimos el HTML en un solo paso para minimizar reflows.
   const html = list.map(p => {
@@ -1268,11 +1398,16 @@ function renderProductos(){
     const stockPill = estado === 'sin' ? `<span class="pill pill-danger">⚠ Sin stock</span>` : estado === 'bajo' ? `<span class="pill pill-warn">⏳ Stock bajo</span>` : '';
     const controlPill = p.aplicar_stock ? `<span class="pill pill-control-on">✓ Control stock</span>` : `<span class="pill pill-control-off">— Sin control</span>`;
     const minCompra = Math.max(1, Number(p.cantidad_minima ?? 1) || 1);
+    const demanda = state.inventarioDemanda.get(String(p.id)) || { unidades: 0, pedidos: 0, promedioDiario: 0 };
+    const autonomia = demanda.promedioDiario > 0 ? Number(p.stock || 0) / demanda.promedioDiario : null;
+    const sugerido = demanda.promedioDiario > 0 && Number(p.plazo_reposicion_dias || 0) > 0
+      ? Math.max(0, Math.ceil(demanda.promedioDiario * (Number(p.plazo_reposicion_dias) + Number(p.stock_seguridad_dias || 0)) - Number(p.stock || 0)))
+      : null;
     const necesitaRevisarActivacion = !available && Number(p.stock || 0) > 0;
     const alertaReactivar = necesitaRevisarActivacion
       ? `<span class="pill pill-alert" title="Se desactivó automáticamente por falta de stock y ya tiene stock repuesto. Ábrelo y guárdalo para reactivarlo.">⚠ Repuesto, sin activar</span>`
       : '';
-    return `
+    const card = `
       <article class="product-card${estado === 'bajo' ? ' stock-bajo' : estado === 'sin' ? ' stock-sin' : ''}${p.aplicar_stock ? ' stock-control-on' : ' stock-control-off'}">
         <div class="product-card-img">
           ${imgUrl ? `<img class="product-thumb" src="${imgUrl}" alt="${escapeHtml(p.nombre)}" loading="lazy" decoding="async">` : `<div class="thumb-placeholder"><i class="fa-solid fa-box-open"></i></div>`}
@@ -1294,6 +1429,8 @@ function renderProductos(){
           <div class="product-card-meta">
             <div><span>Precio</span><strong>$${Number(p.precio || 0).toFixed(2)}</strong></div>
             <div><span>Stock</span><strong>${p.stock ?? 0} ${stockPill}</strong></div>
+            <div><span>Pedido 30 días</span><strong>${demanda.unidades} und.</strong></div>
+            <div><span>Autonomía</span><strong>${autonomia === null ? 'Sin ventas' : `≈ ${autonomia.toFixed(1)} días`}</strong></div>
             <div><span>Oferta</span><strong>${p.oferta ? `-${p.descuento || 0}%` : 'No'}</strong></div>
             <div><span>Más vendido</span><strong>${p.mas_vendido ? 'Sí' : 'No'}</strong></div>
             <div><span>Mín. compra</span><strong>${minCompra > 1 ? minCompra : '—'}</strong></div>
@@ -1309,9 +1446,22 @@ function renderProductos(){
           </div>
         </div>
       </article>`;
+    const row = `<tr>
+      <td>${escapeHtml(p.nombre)}</td><td>${escapeHtml(p.categoria || '—')}</td><td>${p.stock ?? 0}</td>
+      <td>${demanda.unidades}</td><td>${demanda.promedioDiario.toFixed(2)} und./día</td>
+      <td>${autonomia === null ? 'Sin ventas' : `${autonomia.toFixed(1)} días`}</td>
+      <td>${sugerido === null ? 'Configura plazo' : `${sugerido} und.`}</td>
+      <td>$${Number(p.precio || 0).toFixed(2)}</td>
+      <td><div class="row-actions"><button class="btn btn-ghost btn-small" data-ventas="${escapeHtml(String(p.id))}">Ventas</button><button class="btn btn-ghost btn-small" data-edit="${escapeHtml(String(p.id))}">Editar</button><button class="btn btn-danger btn-small" data-del="${escapeHtml(String(p.id))}">Eliminar</button></div></td>
+    </tr>`;
+    return state.inventarioVista === 'tabla' ? row : card;
   }).join('');
 
-  grid.innerHTML = html;
+  if (state.inventarioVista === 'tabla'){
+    grid.innerHTML = `<table class="inventory-table"><thead><tr><th>Producto</th><th>Categoría</th><th>Stock</th><th>Pedido 30 días</th><th>Salida diaria</th><th>Autonomía</th><th>Reponer</th><th>Precio</th><th>Acciones</th></tr></thead><tbody>${html}</tbody></table>`;
+  } else {
+    grid.innerHTML = html;
+  }
   document.getElementById('inv-empty').hidden = list.length !== 0;
 
   // Mejora de imágenes: carga diferida y decoding async para mejorar FPS.
@@ -1352,6 +1502,35 @@ function renderProductos(){
 
 document.getElementById('inv-search').addEventListener('input', debounce(renderProductos, 150));
 document.getElementById('inv-new').addEventListener('click', () => openProductoModal(null));
+document.querySelectorAll('[data-inv-view]').forEach(button => {
+  button.addEventListener('click', () => {
+    state.inventarioVista = button.dataset.invView;
+    localStorage.setItem('panel_inventario_vista', state.inventarioVista);
+    renderProductos();
+  });
+});
+document.getElementById('inv-sort')?.addEventListener('change', event => {
+  state.inventarioOrden = event.target.value;
+  localStorage.setItem('panel_inventario_orden', state.inventarioOrden);
+  renderProductos();
+});
+document.getElementById('inv-export-csv')?.addEventListener('click', () => {
+  const headers = ['Producto', 'Categoría', 'Stock', 'Control de stock', 'Unidades pedidas 30 días', 'Pedidos 30 días', 'Salida diaria promedio', 'Autonomía estimada días', 'Plazo reposición días', 'Reserva días', 'Unidades sugeridas para reponer', 'Precio de venta', 'Valor potencial del stock'];
+  const rows = state.productos.map(producto => {
+    const demanda = state.inventarioDemanda.get(String(producto.id)) || { unidades: 0, pedidos: 0, promedioDiario: 0 };
+    const autonomia = demanda.promedioDiario > 0 ? Number(producto.stock || 0) / demanda.promedioDiario : '';
+    const sugerido = demanda.promedioDiario > 0 && Number(producto.plazo_reposicion_dias || 0) > 0
+      ? Math.max(0, Math.ceil(demanda.promedioDiario * (Number(producto.plazo_reposicion_dias) + Number(producto.stock_seguridad_dias || 0)) - Number(producto.stock || 0)))
+      : '';
+    return [producto.nombre, producto.categoria, producto.stock ?? 0, producto.aplicar_stock ? 'Sí' : 'No', demanda.unidades, demanda.pedidos, demanda.promedioDiario.toFixed(2), autonomia === '' ? '' : autonomia.toFixed(1), producto.plazo_reposicion_dias ?? 0, producto.stock_seguridad_dias ?? 0, sugerido, Number(producto.precio || 0).toFixed(2), (Number(producto.stock || 0) * Number(producto.precio || 0)).toFixed(2)];
+  });
+  exportarCSV(headers, rows, `inventario-buquenque-${new Date().toISOString().slice(0, 10)}.csv`);
+});
+document.getElementById('inv-insights')?.addEventListener('click', event => {
+  const button = event.target.closest('[data-inv-insight-edit]');
+  if (button) openProductoModal(button.dataset.invInsightEdit);
+});
+document.getElementById('inv-sort').value = state.inventarioOrden;
 
 document.querySelectorAll('#inv-tabs [data-itab]').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -1387,6 +1566,8 @@ function openProductoModal(id){
   document.getElementById('prod-stock').value = p ? (p.stock ?? 0) : '';
   document.getElementById('prod-aplicar-stock').checked = p ? !!p.aplicar_stock : false;
   document.getElementById('prod-cantidad-minima').value = p ? Math.max(1, Number(p.cantidad_minima ?? 1) || 1) : 1;
+  document.getElementById('prod-lead-days').value = p ? Math.max(0, Number(p.plazo_reposicion_dias ?? 0) || 0) : 0;
+  document.getElementById('prod-safety-days').value = p ? Math.max(0, Number(p.stock_seguridad_dias ?? 0) || 0) : 0;
   document.getElementById('prod-oferta').checked = p ? !!p.oferta : false;
   const productoDisponible = p
     ? (p.disponibilidad !== undefined ? p.disponibilidad !== false : p.disponible !== false)
@@ -1500,6 +1681,8 @@ document.getElementById('prod-save').addEventListener('click', async () => {
     precio: Number(document.getElementById('prod-precio').value || 0),
     stock: Number(document.getElementById('prod-stock').value || 0),
     cantidad_minima: Math.max(1, Math.floor(Number(document.getElementById('prod-cantidad-minima').value || 1)) || 1),
+    plazo_reposicion_dias: Math.min(365, Math.max(0, parseInt(document.getElementById('prod-lead-days').value, 10) || 0)),
+    stock_seguridad_dias: Math.min(365, Math.max(0, parseInt(document.getElementById('prod-safety-days').value, 10) || 0)),
     aplicar_stock: document.getElementById('prod-aplicar-stock').checked,
     descuento,
     oferta,
@@ -3258,7 +3441,7 @@ function buildClientesFromPedidos(){
   });
 
   return grupos.map(g => {
-    const pedidos = g.pedidos.slice().sort((a, b) => new Date(getPedidoFecha(b)) - new Date(getPedidoFecha(a)));
+    const pedidos = g.pedidos.slice().sort((a, b) => (parseFechaPedidoLocal(getPedidoFecha(b))?.getTime() || 0) - (parseFechaPedidoLocal(getPedidoFecha(a))?.getTime() || 0));
     const masReciente = pedidos[0];
     const totalGastado = pedidos.reduce((acc, p) => acc + Number(p.precio_compra_total || 0), 0);
 
@@ -3391,7 +3574,7 @@ function renderClientePedidoPreview(p){
     <div class="cli-pedido-preview-header">
       <div>
         <strong>Orden ${escapeHtml(getPedidoNumero(p) || '—')}</strong>
-        <span class="hint">${escapeHtml(getPedidoFecha(p) ? new Date(getPedidoFecha(p)).toLocaleString() : '—')}</span>
+        <span class="hint">${escapeHtml(parseFechaPedidoLocal(getPedidoFecha(p))?.toLocaleString() || '—')}</span>
       </div>
       <button class="btn btn-ghost btn-small" id="cli-pedido-abrir-completo" type="button">Abrir pedido completo</button>
     </div>
@@ -3436,7 +3619,7 @@ function renderClienteDetalleBody(){
             const activo = pid === clienteDetallePedidoId;
             return `
             <div class="mini-row cli-pedido-item${activo ? ' active' : ''}" data-cli-pedido="${pid}">
-              <span class="k">${escapeHtml(getPedidoFecha(p) ? new Date(getPedidoFecha(p)).toLocaleDateString() : '—')} · Orden ${escapeHtml(getPedidoNumero(p) || '—')}</span>
+              <span class="k">${escapeHtml(parseFechaPedidoLocal(getPedidoFecha(p))?.toLocaleDateString() || '—')} · Orden ${escapeHtml(getPedidoNumero(p) || '—')}</span>
               <span class="v">$${Number(p.precio_compra_total || 0).toFixed(2)}</span>
             </div>`;
           }).join('') || `<p class="hint">Este cliente no tiene pedidos.</p>`}
@@ -3791,38 +3974,126 @@ async function bootPanel(){
   await proceedPastBackendGate();
 })();
 
+function parseFechaPedidoLocal(fechaStr){
+  if (!fechaStr) return null;
+  const valor = String(fechaStr).trim();
+  const partes = valor.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+  const fecha = partes
+    ? new Date(Number(partes[1]), Number(partes[2]) - 1, Number(partes[3]), Number(partes[4] || 0), Number(partes[5] || 0), Number(partes[6] || 0))
+    : new Date(valor);
+  return Number.isNaN(fecha.getTime()) ? null : fecha;
+}
+
 function esDelMesActual(fechaStr){
-  if (!fechaStr) return false;
-  const f = new Date(fechaStr);
-  if (isNaN(f)) return false;
+  const f = parseFechaPedidoLocal(fechaStr);
+  if (!f) return false;
   const now = new Date();
   return f.getFullYear() === now.getFullYear() && f.getMonth() === now.getMonth();
 }
 
 function fechaAyer(fechaStr){
-  if (!fechaStr) return false;
-  const f = new Date(fechaStr);
-  if (isNaN(f)) return false;
+  const f = parseFechaPedidoLocal(fechaStr);
+  if (!f) return false;
   const ayer = new Date();
   ayer.setDate(ayer.getDate() - 1);
   return f.getFullYear() === ayer.getFullYear() && f.getMonth() === ayer.getMonth() && f.getDate() === ayer.getDate();
 }
 
 function fechaHoy(fechaStr){
-  if (!fechaStr) return false;
-  const f = new Date(fechaStr);
-  if (isNaN(f)) return false;
+  const f = parseFechaPedidoLocal(fechaStr);
+  if (!f) return false;
   const hoy = new Date();
   return f.getFullYear() === hoy.getFullYear() && f.getMonth() === hoy.getMonth() && f.getDate() === hoy.getDate();
 }
 
 function esDelMesAnterior(fechaStr){
-  if (!fechaStr) return false;
-  const f = new Date(fechaStr);
-  if (isNaN(f)) return false;
+  const f = parseFechaPedidoLocal(fechaStr);
+  if (!f) return false;
   const hoy = new Date();
   const mesAnterior = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
   return f.getFullYear() === mesAnterior.getFullYear() && f.getMonth() === mesAnterior.getMonth();
+}
+
+function calcularPronosticoMensual(ventasMes, ventasMesAnterior, fecha = new Date(), ventasUltimos7Dias = null){
+  const diasTranscurridos = fecha.getDate();
+  const diasDelMes = new Date(fecha.getFullYear(), fecha.getMonth() + 1, 0).getDate();
+  const diasMesAnterior = new Date(fecha.getFullYear(), fecha.getMonth(), 0).getDate();
+  const promedioDiarioMes = ventasMes / diasTranscurridos;
+  const promedioDiarioMesAnterior = ventasMesAnterior / diasMesAnterior;
+  const diasRestantes = diasDelMes - diasTranscurridos;
+  const promedioUltimos7Dias = ventasUltimos7Dias === null ? promedioDiarioMes : (Number(ventasUltimos7Dias) || 0) / 7;
+  const ritmos = [promedioDiarioMes, promedioDiarioMesAnterior, promedioUltimos7Dias].filter(Number.isFinite);
+  const promedioPonderado = promedioDiarioMes * 0.5 + promedioUltimos7Dias * 0.3 + promedioDiarioMesAnterior * 0.2;
+  const ventasAcumuladas = Number(ventasMes) || 0;
+  return {
+    diasTranscurridos,
+    diasDelMes,
+    diasMesAnterior,
+    diasRestantes,
+    promedioDiarioMes,
+    promedioDiarioMesAnterior,
+    promedioUltimos7Dias,
+    promedioPonderado,
+    pronosticoCierreMes: ventasAcumuladas + promedioPonderado * diasRestantes,
+    pronosticoMinimo: ventasAcumuladas + Math.min(...ritmos) * diasRestantes,
+    pronosticoMaximo: ventasAcumuladas + Math.max(...ritmos) * diasRestantes
+  };
+}
+
+function montoPedido(pedido){
+  const monto = Number(pedido && pedido.precio_compra_total);
+  return Number.isFinite(monto) && monto > 0 ? monto : 0;
+}
+
+function pedidoEstaPagado(pedido){
+  return toBoolean(pedido && pedido.pagado);
+}
+
+function calcularMetricasClientes(pedidos, fechaActual = new Date()){
+  const identificables = (pedidos || []).filter(pedido => {
+    return Boolean(String(pedido.telefono_comprador || '').replace(/\D/g, '')
+      || String(pedido.correo_comprador || '').trim().toLowerCase().replace('n/a', '')
+      || String(pedido.usuarioId || pedido.userId || pedido.id_usuario || '').trim());
+  });
+  const padre = identificables.map((_, index) => index);
+  const encontrar = index => {
+    while (padre[index] !== index){ padre[index] = padre[padre[index]]; index = padre[index]; }
+    return index;
+  };
+  const unir = (a, b) => { const raizA = encontrar(a), raizB = encontrar(b); if (raizA !== raizB) padre[raizB] = raizA; };
+  const identidadIndex = new Map();
+  identificables.forEach((pedido, index) => {
+    const identidades = [
+      { tipo: 'tel', valor: String(pedido.telefono_comprador || '').replace(/\D/g, '') },
+      { tipo: 'correo', valor: String(pedido.correo_comprador || '').trim().toLowerCase() },
+      { tipo: 'id', valor: String(pedido.usuarioId || pedido.userId || pedido.id_usuario || '').trim() }
+    ].filter(({ valor }) => valor && valor !== 'n/a');
+    identidades.forEach(({ tipo, valor }) => {
+      const clave = `${tipo}:${valor}`;
+      if (identidadIndex.has(clave)) unir(index, identidadIndex.get(clave));
+      else identidadIndex.set(clave, index);
+    });
+  });
+  const clientes = new Map();
+  identificables.forEach((pedido, index) => {
+    const raiz = encontrar(index);
+    const cliente = clientes.get(raiz) || { pedidos: 0, primeraFecha: null, ultimaFecha: null };
+    cliente.pedidos++;
+    const fecha = parseFechaPedidoLocal(getPedidoFecha(pedido));
+    if (fecha && (!cliente.primeraFecha || fecha < cliente.primeraFecha)) cliente.primeraFecha = fecha;
+    if (fecha && (!cliente.ultimaFecha || fecha > cliente.ultimaFecha)) cliente.ultimaFecha = fecha;
+    clientes.set(raiz, cliente);
+  });
+  const diasDesdeUltimaCompra = cliente => cliente.ultimaFecha
+    ? Math.floor((new Date(fechaActual.getFullYear(), fechaActual.getMonth(), fechaActual.getDate()) - new Date(cliente.ultimaFecha.getFullYear(), cliente.ultimaFecha.getMonth(), cliente.ultimaFecha.getDate())) / 86400000)
+    : null;
+  const list = Array.from(clientes.values());
+  return {
+    identificables: list.length,
+    recurrentes: list.filter(cliente => cliente.pedidos > 1).length,
+    nuevosEsteMes: list.filter(cliente => cliente.primeraFecha && cliente.primeraFecha.getFullYear() === fechaActual.getFullYear() && cliente.primeraFecha.getMonth() === fechaActual.getMonth()).length,
+    inactivosRecurrentes: list.filter(cliente => cliente.pedidos > 1 && diasDesdeUltimaCompra(cliente) >= 60).length
+  };
 }
 
 function sumaCompras(pedidos){
@@ -3890,20 +4161,25 @@ function formatDuration(seconds){
   return `${minutos}m`;
 }
 
-function renderVentasMesChart(pedidos){
+function renderVentasMesChart(pedidos, pronostico = null){
   const dias = [];
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth();
   const diasDelMes = new Date(year, month + 1, 0).getDate();
+  const diasMesAnterior = new Date(year, month, 0).getDate();
+  const fechaMesAnterior = new Date(year, month - 1, 1);
   for (let d = 1; d <= diasDelMes; d++) {
-    dias.push({ dia: d, total: 0 });
+    dias.push({ dia: d, total: 0, anterior: 0 });
   }
   pedidos.forEach(p => {
-    const fecha = new Date(getPedidoFecha(p));
-    if (isNaN(fecha) || fecha.getFullYear() !== year || fecha.getMonth() !== month) return;
+    const fecha = parseFechaPedidoLocal(getPedidoFecha(p));
+    if (!fecha) return;
     const idx = fecha.getDate() - 1;
-    dias[idx].total += Number(p.precio_compra_total || 0);
+    if (fecha.getFullYear() === year && fecha.getMonth() === month) dias[idx].total += montoPedido(p);
+    else if (fecha.getFullYear() === fechaMesAnterior.getFullYear() && fecha.getMonth() === fechaMesAnterior.getMonth() && idx < dias.length){
+      dias[idx].anterior += montoPedido(p);
+    }
   });
   const hayVentas = dias.some(d => d.total > 0);
   const cards = dias.map(day => `
@@ -3913,12 +4189,36 @@ function renderVentasMesChart(pedidos){
     </div>`).join('');
   const chart = document.getElementById('resu-ventas-mes-chart');
   if (chart){
+    const diaCorte = now.getDate();
+    const acumuladoActual = dias.slice(0, diaCorte).map((_, i) => dias.slice(0, i + 1).reduce((total, dia) => total + dia.total, 0));
+    const acumuladoAnterior = dias.slice(0, Math.min(diaCorte, diasMesAnterior)).map((_, i) => dias.slice(0, i + 1).reduce((total, dia) => total + dia.anterior, 0));
+    const valorPronostico = pronostico?.pronosticoCierreMes ?? acumuladoActual.at(-1) ?? 0;
+    const maxValor = Math.max(...acumuladoActual, ...acumuladoAnterior, valorPronostico, 1);
+    const xForDay = day => 70 + ((day - 1) / Math.max(1, diasDelMes - 1)) * 880;
+    const yForValue = value => 190 - (value / maxValor) * 150;
+    const puntosActual = acumuladoActual.map((valor, i) => `${xForDay(i + 1)},${yForValue(valor)}`).join(' ');
+    const puntosAnterior = acumuladoAnterior.map((valor, i) => `${xForDay(i + 1)},${yForValue(valor)}`).join(' ');
+    const puntoCierre = `${xForDay(diaCorte)},${yForValue(acumuladoActual.at(-1) || 0)} ${xForDay(diasDelMes)},${yForValue(valorPronostico)}`;
+    const lineas = [0, 1, 2, 3].map(i => {
+      const valor = maxValor * i / 3;
+      const y = yForValue(valor);
+      return `<line x1="70" y1="${y}" x2="950" y2="${y}" class="sales-trend-gridline"/><text x="60" y="${y + 4}" text-anchor="end" class="sales-trend-axis">$${valor.toFixed(0)}</text>`;
+    }).join('');
+    const marcas = [1, 7, 14, 21, diasDelMes].filter((day, index, arr) => day <= diasDelMes && arr.indexOf(day) === index)
+      .map(day => `<text x="${xForDay(day)}" y="222" text-anchor="middle" class="sales-trend-axis">${day}</text>`).join('');
+    const tendencia = `<div class="sales-trend-wrap"><svg viewBox="0 0 1000 240" class="sales-trend-svg" role="img" aria-label="Ventas acumuladas de este mes comparadas con el mismo tramo del mes anterior">
+      ${lineas}${marcas}
+      <polyline points="${puntosAnterior}" class="sales-trend-line sales-trend-previous"/>
+      <polyline points="${puntosActual}" class="sales-trend-line sales-trend-current"/>
+      ${pronostico ? `<polyline points="${puntoCierre}" class="sales-trend-line sales-trend-forecast"/>` : ''}
+    </svg><div class="sales-trend-legend"><span><i class="sales-trend-key current"></i>Este mes</span><span><i class="sales-trend-key previous"></i>Mismo tramo anterior</span><span><i class="sales-trend-key forecast"></i>Pronóstico</span></div></div>`;
     chart.innerHTML = `
       <div class="chart-legend">
-        <span>Ventas por día</span>
+        <span>Ventas acumuladas por día</span>
         <strong>${hayVentas ? `${dias.filter(d => d.total > 0).length} días con ventas` : 'Sin ventas'}</strong>
       </div>
-      ${hayVentas ? `<div class="chart-grid-cards">${cards}</div>` : `<div class="chart-empty">No hay ventas registradas este mes.</div>`}`;
+      ${hayVentas || acumuladoAnterior.some(total => total > 0) ? tendencia : `<div class="chart-empty">No hay ventas registradas para comparar.</div>`}
+      ${hayVentas ? `<div class="chart-grid-cards">${cards}</div>` : ''}`;
   }
 }
 
@@ -4321,8 +4621,8 @@ function renderRangoChart(pedidosEnRango, desde, hasta){
     cursor.setDate(cursor.getDate() + 1);
   }
   pedidosEnRango.forEach(p => {
-    const fecha = new Date(getPedidoFecha(p));
-    if (isNaN(fecha)) return;
+    const fecha = parseFechaPedidoLocal(getPedidoFecha(p));
+    if (!fecha) return;
     const dia = dias.find(d => d.fecha.getFullYear() === fecha.getFullYear() && d.fecha.getMonth() === fecha.getMonth() && d.fecha.getDate() === fecha.getDate());
     if (dia) dia.total += Number(p.precio_compra_total || 0);
   });
@@ -4345,6 +4645,31 @@ function renderRangoChart(pedidosEnRango, desde, hasta){
     ${hayVentas ? `<div class="chart-grid-cards">${cards}</div>` : `<div class="chart-empty">No hay ventas registradas en este rango.</div>`}`
     : `<div class="chart-empty">Selecciona un rango válido.</div>`;
 }
+
+function renderResumenInsights({ pendienteCobro, pendientesCount, cambio7Dias, productosBajoStock, clientesInactivos }){
+  const contenedor = document.getElementById('resu-insights');
+  if (!contenedor) return;
+  const alertas = [];
+  if (pendienteCobro > 0){
+    alertas.push({ tipo: 'warn', titulo: 'Cobros pendientes', detalle: `${pendientesCount} pedido(s) por $${pendienteCobro.toFixed(2)} todavía no tienen pago confirmado.`, vista: 'pedidos' });
+  }
+  if (cambio7Dias !== null && cambio7Dias < -10){
+    alertas.push({ tipo: 'warn', titulo: 'Ritmo de pedidos en descenso', detalle: `Los últimos 7 días están ${Math.abs(cambio7Dias).toFixed(1)}% por debajo de los 7 días previos.`, vista: 'pedidos' });
+  }
+  if (productosBajoStock > 0){
+    alertas.push({ tipo: 'danger', titulo: 'Revisar existencias', detalle: `${productosBajoStock} producto(s) controlado(s) están bajo el umbral o agotados.`, vista: 'inventario' });
+  }
+  if (clientesInactivos > 0){
+    alertas.push({ tipo: 'info', titulo: 'Clientes recurrentes inactivos', detalle: `${clientesInactivos} cliente(s) recurrente(s) llevan al menos 60 días sin comprar.`, vista: 'usuarios' });
+  }
+  contenedor.innerHTML = alertas.length ? alertas.map(alerta => `
+    <div class="mini-row resu-insight-row">
+      <span class="k"><span class="pill pill-${alerta.tipo}">${escapeHtml(alerta.titulo)}</span> ${escapeHtml(alerta.detalle)}</span>
+      <button class="btn btn-ghost btn-small" type="button" data-resu-goto="${alerta.vista}">Abrir</button>
+    </div>`).join('') : `<p class="hint">No hay alertas con los datos actuales.</p>`;
+}
+
+let ultimoResumenInforme = null;
 
 async function loadResumen(){
   try{
@@ -4371,10 +4696,35 @@ async function loadResumen(){
     const pedidosUnicos = Array.from(pedidosUnicosMap.values());
 
     const delMes = pedidosUnicos.filter(p => esDelMesActual(getPedidoFecha(p)));
-    const ventasMes = delMes.reduce((acc, p) => acc + Number(p.precio_compra_total || 0), 0);
+    const ventasMes = delMes.reduce((acc, p) => acc + montoPedido(p), 0);
+    const ingresosCobradosMes = delMes.filter(pedidoEstaPagado).reduce((acc, p) => acc + montoPedido(p), 0);
+    const pendienteCobroMes = Math.max(0, ventasMes - ingresosCobradosMes);
     const ventasHoy = pedidosUnicos.filter(p => fechaHoy(getPedidoFecha(p))).reduce((acc, p) => acc + Number(p.precio_compra_total || 0), 0);
     const ventasAyer = pedidosUnicos.filter(p => fechaAyer(getPedidoFecha(p))).reduce((acc, p) => acc + Number(p.precio_compra_total || 0), 0);
     const ventasMesAnterior = pedidosUnicos.filter(p => esDelMesAnterior(getPedidoFecha(p))).reduce((acc, p) => acc + Number(p.precio_compra_total || 0), 0);
+    const hoy = new Date();
+    const inicioUltimos7Dias = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 6);
+    const inicio7DiasPrevios = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 13);
+    const fin7DiasPrevios = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 7, 23, 59, 59, 999);
+    const ventasUltimos7Dias = pedidosUnicos.reduce((acc, p) => {
+      const fecha = parseFechaPedidoLocal(getPedidoFecha(p));
+      return fecha && fecha >= inicioUltimos7Dias && fecha <= hoy ? acc + montoPedido(p) : acc;
+    }, 0);
+    const ventas7DiasPrevios = pedidosUnicos.reduce((acc, p) => {
+      const fecha = parseFechaPedidoLocal(getPedidoFecha(p));
+      return fecha && fecha >= inicio7DiasPrevios && fecha <= fin7DiasPrevios ? acc + montoPedido(p) : acc;
+    }, 0);
+    const mesAnterior = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+    const mesAnteriorMismoDia = new Date(hoy.getFullYear(), hoy.getMonth(), 0).getDate();
+    const diaCorteComparacion = Math.min(hoy.getDate(), mesAnteriorMismoDia);
+    const ventasMesAnteriorMismoDia = pedidosUnicos.reduce((acc, p) => {
+      const fecha = parseFechaPedidoLocal(getPedidoFecha(p));
+      return fecha && fecha.getFullYear() === mesAnterior.getFullYear()
+        && fecha.getMonth() === mesAnterior.getMonth()
+        && fecha.getDate() <= diaCorteComparacion ? acc + montoPedido(p) : acc;
+    }, 0);
+    const pronostico = calcularPronosticoMensual(ventasMes, ventasMesAnterior, hoy, ventasUltimos7Dias);
+    const metricasClientes = calcularMetricasClientes(pedidosUnicos, hoy);
     const productosVendidosMes = sumaCompras(delMes);
     const recurrentes = usuarios.filter(u => u.tipo_usuario === 'Recurrente').length;
     const seguimientoAbierto = asignados.filter(p => estadoPedidoKey(p) !== 'completado').length;
@@ -4397,6 +4747,48 @@ async function loadResumen(){
         : 'growth-neutral';
 
     setText('resu-ventas-mes', '$' + ventasMes.toFixed(2));
+    setText('resu-ingresos-cobrados', '$' + ingresosCobradosMes.toFixed(2));
+    setText('resu-pendiente-cobro', '$' + pendienteCobroMes.toFixed(2));
+    setText('resu-pendiente-cobro-sub', `${delMes.filter(p => !pedidoEstaPagado(p)).length} pedido(s) aún sin pago confirmado`);
+    setText('resu-promedio-diario', '$' + pronostico.promedioDiarioMes.toFixed(2));
+    setText('resu-promedio-diario-sub', `${ventasMes.toFixed(2)} ÷ ${pronostico.diasTranscurridos} días transcurridos`);
+    setText('resu-promedio-anterior', '$' + pronostico.promedioDiarioMesAnterior.toFixed(2));
+    setText('resu-promedio-anterior-sub', `${ventasMesAnterior.toFixed(2)} ÷ ${pronostico.diasMesAnterior} días del mes anterior`);
+    setText('resu-pronostico-mes', '$' + pronostico.pronosticoCierreMes.toFixed(2));
+    setText('resu-pronostico-mes-sub', `Escenario central · rango $${pronostico.pronosticoMinimo.toFixed(2)}–$${pronostico.pronosticoMaximo.toFixed(2)}`);
+    setText('resu-pronostico-contexto', `Ritmo ponderado: 50% promedio del mes, 30% últimos 7 días y 20% promedio del mes anterior; ${pronostico.diasRestantes} días restantes.`);
+    setText('resu-comparacion-mes', '$' + ventasMesAnteriorMismoDia.toFixed(2));
+    const cambioVsMismoDia = ventasMesAnteriorMismoDia > 0 ? ((ventasMes - ventasMesAnteriorMismoDia) / ventasMesAnteriorMismoDia) * 100 : null;
+    setText('resu-comparacion-mes-sub', cambioVsMismoDia === null ? `Mes anterior hasta el día ${diaCorteComparacion}: sin base comparable` : `${cambioVsMismoDia >= 0 ? '+' : ''}${cambioVsMismoDia.toFixed(1)}% vs. mismo tramo del mes anterior`);
+    setText('resu-crecimiento-mes-sub', `Mes actual acumulado $${ventasMes.toFixed(2)} vs. mes anterior completo $${ventasMesAnterior.toFixed(2)}`);
+    setText('resu-tendencia-7dias', '$' + ventasUltimos7Dias.toFixed(2));
+    const cambio7Dias = ventas7DiasPrevios > 0 ? ((ventasUltimos7Dias - ventas7DiasPrevios) / ventas7DiasPrevios) * 100 : null;
+    setText('resu-tendencia-7dias-sub', cambio7Dias === null ? 'No hay período previo comparable' : `${cambio7Dias >= 0 ? '+' : ''}${cambio7Dias.toFixed(1)}% frente a los 7 días previos`);
+    setText('resu-clientes-recurrentes', metricasClientes.recurrentes);
+    setText('resu-clientes-nuevos', metricasClientes.nuevosEsteMes);
+    setText('resu-clientes-inactivos', metricasClientes.inactivosRecurrentes);
+    setText('resu-clientes-actividad-sub', `De ${metricasClientes.identificables} clientes identificables por teléfono, correo o ID`);
+    renderResumenInsights({
+      pendienteCobro: pendienteCobroMes,
+      pendientesCount: delMes.filter(p => !pedidoEstaPagado(p)).length,
+      cambio7Dias,
+      productosBajoStock: contarProductosPorStock().bajo + contarProductosPorStock().sin,
+      clientesInactivos: metricasClientes.inactivosRecurrentes
+    });
+    ultimoResumenInforme = {
+      fecha: hoy,
+      ventasMes,
+      ventasMesAnterior,
+      crecimientoPorcentaje,
+      ingresosCobradosMes,
+      pendienteCobroMes,
+      pronosticoCierre: pronostico.pronosticoCierreMes,
+      pronosticoMinimo: pronostico.pronosticoMinimo,
+      pronosticoMaximo: pronostico.pronosticoMaximo,
+      ventasMesAnteriorMismoDia,
+      ventasUltimos7Dias,
+      metricasClientes
+    };
     setText('resu-pedidos-mes', delMes.length);
     setText('resu-pedidos-nuevos', nuevosSinAsignar.length);
     setText('resu-pedidos-seguimiento', seguimientoNoPagado);
@@ -4409,7 +4801,7 @@ async function loadResumen(){
     setText('resu-usuarios-sub', usuarios.length ? `${recurrentes} recurrentes` : '—');
 
     const recientes = [...pedidosUnicos]
-      .sort((a, b) => new Date(getPedidoFecha(b)) - new Date(getPedidoFecha(a)))
+      .sort((a, b) => (parseFechaPedidoLocal(getPedidoFecha(b))?.getTime() || 0) - (parseFechaPedidoLocal(getPedidoFecha(a))?.getTime() || 0))
       .slice(0, 6);
     const listaRecientes = document.getElementById('resu-recientes');
     if (listaRecientes){
@@ -4440,7 +4832,7 @@ async function loadResumen(){
     }
 
     registrarNodeChart('resu-flow-chart', () => renderFlowChart(origenesOrdenadosFull, usuarios.length, pedidosUnicos.length, ventasMes));
-    renderVentasMesChart(delMes);
+    renderVentasMesChart(pedidosUnicos, pronostico);
 
     /* ---------------- Productos más vendidos (del mes) ---------------- */
     const ventasPorProducto = new Map();
@@ -4496,8 +4888,8 @@ async function loadResumen(){
     /* ---------------- Rango de fechas seleccionado ---------------- */
     const { desde, hasta, etiqueta } = calcularRangoFechas();
     const pedidosEnRango = pedidosUnicos.filter(p => {
-      const fecha = new Date(getPedidoFecha(p));
-      return !isNaN(fecha) && fecha >= desde && fecha <= hasta;
+      const fecha = parseFechaPedidoLocal(getPedidoFecha(p));
+      return fecha && fecha >= desde && fecha <= hasta;
     });
     const ventasRango = pedidosEnRango.reduce((acc, p) => acc + Number(p.precio_compra_total || 0), 0);
     const productosRango = sumaCompras(pedidosEnRango);
@@ -4554,6 +4946,66 @@ document.querySelectorAll('[data-goto-inv]').forEach(card => {
 
 const resumenBtn = document.querySelector('.nav-item[data-view="resumen"]');
 if (resumenBtn) resumenBtn.addEventListener('click', loadResumen);
+document.getElementById('resu-export-report')?.addEventListener('click', () => {
+  if (!ultimoResumenInforme){
+    showToast('Carga el Resumen antes de exportar.', true);
+    return;
+  }
+  const r = ultimoResumenInforme;
+  const fecha = r.fecha.toLocaleDateString();
+  exportarCSV(['Métrica', 'Valor'], [
+    ['Fecha del informe', fecha],
+    ['Importe de pedidos del mes', r.ventasMes.toFixed(2)],
+    ['Total del mes anterior completo', r.ventasMesAnterior.toFixed(2)],
+    ['Variación vs mes anterior completo', r.crecimientoPorcentaje === null ? 'Nuevo mes' : `${r.crecimientoPorcentaje.toFixed(1)}%`],
+    ['Ingresos cobrados', r.ingresosCobradosMes.toFixed(2)],
+    ['Pendiente de cobro', r.pendienteCobroMes.toFixed(2)],
+    ['Pronóstico central de pedidos', r.pronosticoCierre.toFixed(2)],
+    ['Escenario bajo', r.pronosticoMinimo.toFixed(2)],
+    ['Escenario alto', r.pronosticoMaximo.toFixed(2)],
+    ['Mes anterior al mismo día', r.ventasMesAnteriorMismoDia.toFixed(2)],
+    ['Pedidos últimos 7 días', r.ventasUltimos7Dias.toFixed(2)],
+    ['Clientes recurrentes identificables', String(r.metricasClientes.recurrentes)],
+    ['Clientes nuevos del mes', String(r.metricasClientes.nuevosEsteMes)],
+    ['Recurrentes inactivos 60+ días', String(r.metricasClientes.inactivosRecurrentes)]
+  ], `resumen-buquenque-${r.fecha.toISOString().slice(0, 10)}.csv`);
+});
+document.getElementById('resu-print-report')?.addEventListener('click', () => {
+  if (!ultimoResumenInforme){
+    showToast('Carga el Resumen antes de imprimir.', true);
+    return;
+  }
+  const r = ultimoResumenInforme;
+  const printWindow = window.open('', '_blank', 'width=900,height=700');
+  if (!printWindow){
+    showToast('Permite la ventana emergente para imprimir el informe.', true);
+    return;
+  }
+  const filas = [
+    ['Importe de pedidos del mes', `$${r.ventasMes.toFixed(2)}`],
+    ['Total del mes anterior completo', `$${r.ventasMesAnterior.toFixed(2)}`],
+    ['Variación vs mes anterior completo', r.crecimientoPorcentaje === null ? 'Nuevo mes' : `${r.crecimientoPorcentaje.toFixed(1)}%`],
+    ['Ingresos cobrados', `$${r.ingresosCobradosMes.toFixed(2)}`],
+    ['Pendiente de cobro', `$${r.pendienteCobroMes.toFixed(2)}`],
+    ['Pronóstico central de cierre', `$${r.pronosticoCierre.toFixed(2)}`],
+    ['Escenario de referencia bajo', `$${r.pronosticoMinimo.toFixed(2)}`],
+    ['Escenario de referencia alto', `$${r.pronosticoMaximo.toFixed(2)}`],
+    ['Mes anterior al mismo día', `$${r.ventasMesAnteriorMismoDia.toFixed(2)}`],
+    ['Pedidos últimos 7 días', `$${r.ventasUltimos7Dias.toFixed(2)}`],
+    ['Clientes recurrentes identificables', String(r.metricasClientes.recurrentes)],
+    ['Clientes nuevos del mes', String(r.metricasClientes.nuevosEsteMes)],
+    ['Recurrentes inactivos 60+ días', String(r.metricasClientes.inactivosRecurrentes)]
+  ];
+  printWindow.document.open();
+  printWindow.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Informe de Buquenque</title><style>body{font:15px Arial,sans-serif;color:#1b1b1b;max-width:760px;margin:40px auto;padding:0 20px}h1{font-size:24px;margin-bottom:6px}p{color:#555}table{width:100%;border-collapse:collapse;margin-top:24px}th,td{padding:12px 8px;text-align:left;border-bottom:1px solid #ccc}th:last-child,td:last-child{text-align:right;font-weight:600}.note{margin-top:20px;font-size:12px;line-height:1.5}@media print{body{margin:0 auto}}</style></head><body><h1>Buquenque · Resumen de ventas</h1><p>Generado el ${escapeHtml(r.fecha.toLocaleDateString())}</p><table><thead><tr><th>Métrica</th><th>Valor</th></tr></thead><tbody>${filas.map(([nombre, valor]) => `<tr><td>${escapeHtml(nombre)}</td><td>${escapeHtml(valor)}</td></tr>`).join('')}</tbody></table><p class="note">Pronóstico orientativo: pondera el promedio diario del mes (50%), los últimos 7 días (30%) y el promedio del mes anterior (20%). Los escenarios muestran los ritmos históricos bajo y alto observados, no una garantía de venta.</p></body></html>`);
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.print();
+});
+document.getElementById('resu-insights')?.addEventListener('click', event => {
+  const button = event.target.closest('[data-resu-goto]');
+  if (button) goToView(button.dataset.resuGoto);
+});
 // (Se quitó la llamada automática a loadResumen() de aquí: ahora la
 // dispara bootPanel() una vez confirmada la sesión, para no llamar a la
 // API antes de tiempo y disparar un 401 innecesario.)
@@ -4881,7 +5333,7 @@ async function calcularStockCheck(){
         return !Number.isNaN(num) && num >= desde && num <= hasta;
       });
       etiquetaRango = `Pedidos #${desde} a #${hasta}`;
-      const fechasValidas = pedidosEnRango.map(p => new Date(getPedidoFecha(p))).filter(f => !isNaN(f));
+      const fechasValidas = pedidosEnRango.map(p => parseFechaPedidoLocal(getPedidoFecha(p))).filter(Boolean);
       if (fechasValidas.length){
         const min = new Date(Math.min(...fechasValidas));
         const max = new Date(Math.max(...fechasValidas));
@@ -4893,8 +5345,8 @@ async function calcularStockCheck(){
     etiquetaRango = etiqueta;
     if (desde && hasta){
       pedidosEnRango = pedidos.filter(p => {
-        const fecha = new Date(getPedidoFecha(p));
-        return !isNaN(fecha) && fecha >= desde && fecha <= hasta;
+        const fecha = parseFechaPedidoLocal(getPedidoFecha(p));
+        return fecha && fecha >= desde && fecha <= hasta;
       });
       dias = Math.max(1, Math.round((hasta - desde) / 86400000) + 1);
     }
@@ -4939,7 +5391,7 @@ async function calcularStockCheck(){
 
   listaEl.innerHTML = conProducto.length ? conProducto.map(({ p, cantidad }) => `
     <div class="mini-row" data-stockchk-pedido="${escapeHtml(getOriginalPedidoId(p))}" style="cursor:pointer;">
-      <span class="k">${escapeHtml(getPedidoFecha(p) ? new Date(getPedidoFecha(p)).toLocaleDateString() : '—')} · Orden ${escapeHtml(getPedidoNumero(p) || '—')} · ${escapeHtml(p.nombre_comprador || '—')}</span>
+      <span class="k">${escapeHtml(parseFechaPedidoLocal(getPedidoFecha(p))?.toLocaleDateString() || '—')} · Orden ${escapeHtml(getPedidoNumero(p) || '—')} · ${escapeHtml(p.nombre_comprador || '—')}</span>
       <span class="v">${cantidad} und.</span>
     </div>`).join('') : `<p class="hint">No se encontraron pedidos con este producto en el rango seleccionado.</p>`;
 

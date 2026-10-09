@@ -13,7 +13,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Analytics">
-<link rel="stylesheet" href="styles.css?v=11">
+<link rel="stylesheet" href="styles.css?v=16">
 </head>
 <body>
 
@@ -235,14 +235,28 @@
     <section class="view active" id="view-resumen">
       <header class="view-header">
         <h2>Resumen</h2>
-        <p>Ventas del mes, productos vendidos y usuarios de la tienda.</p>
+        <p>Ventas del mes, ritmo diario y pronóstico de cierre.</p>
+        <div class="header-actions resu-report-actions">
+          <button class="btn btn-ghost" id="resu-export-report" type="button"><i class="fa-solid fa-file-csv"></i> Exportar informe</button>
+          <button class="btn btn-ghost" id="resu-print-report" type="button"><i class="fa-solid fa-print"></i> Imprimir resumen</button>
+        </div>
       </header>
 
       <div class="stat-grid" id="resu-stat-grid-principal">
         <div class="stat-card accent">
-          <span class="stat-label">Ventas del mes</span>
+          <span class="stat-label">Importe de pedidos</span>
           <span class="stat-value" id="resu-ventas-mes">—</span>
-          <span class="stat-sub">suma de precio_compra_total</span>
+          <span class="stat-sub">incluye pedidos pagados y pendientes</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Ingresos cobrados</span>
+          <span class="stat-value" id="resu-ingresos-cobrados">—</span>
+          <span class="stat-sub">pedidos con pago confirmado</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Pendiente de cobro</span>
+          <span class="stat-value" id="resu-pendiente-cobro">—</span>
+          <span class="stat-sub" id="resu-pendiente-cobro-sub">—</span>
         </div>
         <div class="stat-card">
           <span class="stat-label">Pedidos del mes</span>
@@ -270,9 +284,9 @@
           <span class="stat-sub">total de ventas de hoy</span>
         </div>
         <div class="stat-card">
-          <span class="stat-label">Crecimiento mensual</span>
+          <span class="stat-label">Variación vs mes anterior</span>
           <span class="stat-value" id="resu-crecimiento-mes">—</span>
-          <span class="stat-sub">comparado con el mes anterior</span>
+          <span class="stat-sub" id="resu-crecimiento-mes-sub">—</span>
         </div>
         <div class="stat-card">
           <span class="stat-label">Productos vendidos</span>
@@ -294,6 +308,58 @@
           <span class="stat-value" id="resu-stock-sin">—</span>
           <span class="stat-sub">productos agotados</span>
         </div>
+      </div>
+
+      <div class="stat-grid" id="resu-pronostico-grid">
+        <div class="stat-card">
+          <span class="stat-label">Promedio diario este mes</span>
+          <span class="stat-value" id="resu-promedio-diario">—</span>
+          <span class="stat-sub" id="resu-promedio-diario-sub">—</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Promedio diario mes anterior</span>
+          <span class="stat-value" id="resu-promedio-anterior">—</span>
+          <span class="stat-sub" id="resu-promedio-anterior-sub">—</span>
+        </div>
+        <div class="stat-card accent">
+          <span class="stat-label">Pronóstico al cierre del mes</span>
+          <span class="stat-value" id="resu-pronostico-mes">—</span>
+          <span class="stat-sub" id="resu-pronostico-mes-sub">—</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Mes anterior, mismo tramo</span>
+          <span class="stat-value" id="resu-comparacion-mes">—</span>
+          <span class="stat-sub" id="resu-comparacion-mes-sub">—</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Pedidos últimos 7 días</span>
+          <span class="stat-value" id="resu-tendencia-7dias">—</span>
+          <span class="stat-sub" id="resu-tendencia-7dias-sub">—</span>
+        </div>
+      </div>
+      <p class="hint resu-pronostico-contexto" id="resu-pronostico-contexto">—</p>
+
+      <div class="stat-grid" id="resu-clientes-stats">
+        <div class="stat-card">
+          <span class="stat-label">Clientes nuevos este mes</span>
+          <span class="stat-value" id="resu-clientes-nuevos">—</span>
+          <span class="stat-sub">primera compra registrada en este mes</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Clientes recurrentes</span>
+          <span class="stat-value" id="resu-clientes-recurrentes">—</span>
+          <span class="stat-sub" id="resu-clientes-actividad-sub">—</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Recurrentes inactivos 60+ días</span>
+          <span class="stat-value" id="resu-clientes-inactivos">—</span>
+          <span class="stat-sub">clientes identificables sin compra reciente</span>
+        </div>
+      </div>
+
+      <div class="panel-box fullwidth resu-insights-box">
+        <div class="panel-box-head"><h2>Qué requiere atención</h2></div>
+        <div id="resu-insights" class="mini-table"><p class="hint">Cargando…</p></div>
       </div>
 
       <div class="panel-grid panel-grid-node-charts">
@@ -375,7 +441,7 @@
       <div class="panel-box fullwidth">
         <div class="panel-box-head">
           <h2>Flujo de origen a venta</h2>
-          <span class="hint" style="margin:0;">De dónde llegan los visitantes hasta convertirse en ventas</span>
+          <span class="hint" style="margin:0;">Volúmenes agregados; los pedidos no están vinculados a un origen</span>
         </div>
         <div class="flow-chart" id="resu-flow-chart">Cargando…</div>
       </div>
@@ -602,6 +668,7 @@
             </label>
           </div>
           <button class="btn btn-ghost" id="inv-check-ventas-btn"><i class="fa-solid fa-chart-line"></i> Ventas por producto</button>
+          <button class="btn btn-ghost" id="inv-export-csv" type="button"><i class="fa-solid fa-file-csv"></i> Exportar CSV</button>
           <button class="btn btn-primary" id="inv-new">+ Nuevo producto</button>
         </div>
         <div class="seg-tabs" id="inv-tabs">
@@ -612,6 +679,30 @@
         </div>
       </header>
       <div class="stat-chip-row" id="inv-stats"></div>
+      <details class="panel-box fullwidth inventory-insights-box">
+        <summary class="panel-box-head">
+          <h2>Reposición y rotación</h2>
+          <span class="inventory-insights-count" id="inv-insights-count">Calculando…</span>
+          <i class="fa-solid fa-chevron-down inventory-insights-chevron" aria-hidden="true"></i>
+        </summary>
+        <p class="hint inventory-insights-hint">Basado en unidades pedidas durante los últimos 30 días</p>
+        <div id="inv-insights" class="mini-table"><p class="hint">Cargando análisis de pedidos…</p></div>
+      </details>
+      <div class="inv-list-toolbar">
+        <label>Ordenar por
+          <select id="inv-sort">
+            <option value="urgencia">Urgencia de reposición</option>
+            <option value="stock_asc">Menor stock</option>
+            <option value="stock_desc">Mayor stock</option>
+            <option value="ventas_desc">Más pedidos (30 días)</option>
+            <option value="nombre">Nombre A-Z</option>
+          </select>
+        </label>
+        <div class="inv-view-toggle" role="group" aria-label="Vista del inventario">
+          <button class="icon-btn" type="button" data-inv-view="tarjetas" title="Vista de tarjetas" aria-label="Vista de tarjetas"><i class="fa-solid fa-grip"></i></button>
+          <button class="icon-btn" type="button" data-inv-view="tabla" title="Vista de tabla" aria-label="Vista de tabla"><i class="fa-solid fa-table-list"></i></button>
+        </div>
+      </div>
       <div class="table-wrap">
         <div class="inventory-grid" id="inv-grid"></div>
         <p class="empty" id="inv-empty" hidden>No hay productos todavía.</p>
@@ -880,6 +971,15 @@
           <input type="number" min="1" step="1" id="prod-cantidad-minima" placeholder="1">
         </label>
         <p class="hint">El cliente no podrá añadir menos de esta cantidad al carrito. Déjalo en 1 para no exigir mínimo.</p>
+        <div class="grid-2">
+          <label>Plazo de reposición (días)
+            <input type="number" min="0" max="365" step="1" id="prod-lead-days" placeholder="0">
+          </label>
+          <label>Reserva adicional (días)
+            <input type="number" min="0" max="365" step="1" id="prod-safety-days" placeholder="0">
+          </label>
+        </div>
+        <p class="hint">Se usa con la demanda reciente para recomendar cuándo y cuánto reponer. Déjalo en 0 si aún no tienes ese dato.</p>
       </div>
 
       <div class="modal-section">
@@ -1185,6 +1285,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=11"></script>
+<script src="app.js?v=12"></script>
 </body>
 </html>
