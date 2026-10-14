@@ -2941,6 +2941,7 @@ function actualizarBadgesPedidos(){
 // el modal desde showPedidoDetalle.
 let pedidoDetalleActual = null;
 let pedidoDetalleEditando = false;
+let pedidoDetalleDatosEditando = false;
 let pedidoDetalleComprasEdit = [];
 
 function pedidoDetalleEsSeguimiento(p){
@@ -2956,6 +2957,7 @@ function showPedidoDetalle(p){
   if (!p) return;
   pedidoDetalleActual = p;
   pedidoDetalleEditando = false;
+  pedidoDetalleDatosEditando = false;
   pedidoDetalleComprasEdit = [];
   renderPedidoDetalleBody();
   openModal('modal-pedido');
@@ -2975,10 +2977,10 @@ function renderPedidoDetalleBody(){
   const cabecera = `
     <dl class="detail-grid">
       <dt>Número de orden</dt><dd>${escapeHtml(getPedidoNumero(p) || '—')}</dd>
-      <dt>Comprador</dt><dd>${escapeHtml(p.nombre_comprador || '—')}</dd>
-      <dt>Teléfono</dt><dd>${escapeHtml(p.telefono_comprador || '—')}</dd>
+      <dt>Comprador</dt><dd>${pedidoDetalleDatosEditando ? `<input class="pedido-contact-input" id="pedido-contact-nombre" aria-label="Comprador" maxlength="160" value="${escapeHtml(p.nombre_comprador || '')}">` : escapeHtml(p.nombre_comprador || '—')}</dd>
+      <dt>Teléfono</dt><dd>${pedidoDetalleDatosEditando ? `<input class="pedido-contact-input" id="pedido-contact-telefono" aria-label="Teléfono del comprador" maxlength="50" value="${escapeHtml(p.telefono_comprador || '')}">` : escapeHtml(p.telefono_comprador || '—')}</dd>
       <dt>Correo</dt><dd>${escapeHtml(p.correo_comprador || '—')}</dd>
-      <dt>Dirección</dt><dd>${escapeHtml(p.direccion_envio || '—')}</dd>
+      <dt>Dirección</dt><dd>${pedidoDetalleDatosEditando ? `<input class="pedido-contact-input" id="pedido-contact-direccion" aria-label="Dirección de envío" maxlength="500" value="${escapeHtml(p.direccion_envio || '')}">` : escapeHtml(p.direccion_envio || '—')}</dd>
       <dt>Entrega a</dt><dd>${escapeHtml(p.nombre_persona_entrega || '—')} (${escapeHtml(p.telefono_persona_entrega || '—')})</dd>
       <dt>Fecha entrega</dt><dd>
         ${pedidoDetalleEsSeguimiento(p)
@@ -2989,7 +2991,22 @@ function renderPedidoDetalleBody(){
       </dd>
       <dt>Total</dt><dd id="pedido-detalle-total">$${Number(p.precio_compra_total || 0).toFixed(2)}</dd>
     </dl>
+    <div class="pedido-contact-actions">
+      ${pedidoDetalleDatosEditando
+        ? `<button class="btn btn-ghost btn-small" id="pedido-cancelar-datos-btn">Cancelar</button><button class="btn btn-primary btn-small" id="pedido-guardar-datos-btn">Guardar datos</button>`
+        : `<button class="btn btn-ghost btn-small" id="pedido-editar-datos-btn"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i> Editar comprador, teléfono y dirección</button>`}
+    </div>
   `;
+
+  document.getElementById('pedido-editar-datos-btn')?.addEventListener('click', () => {
+    pedidoDetalleDatosEditando = true;
+    renderPedidoDetalleBody();
+  });
+  document.getElementById('pedido-cancelar-datos-btn')?.addEventListener('click', () => {
+    pedidoDetalleDatosEditando = false;
+    renderPedidoDetalleBody();
+  });
+  document.getElementById('pedido-guardar-datos-btn')?.addEventListener('click', guardarDatosCompradorPedido);
 
   if (!pedidoDetalleEditando){
     body.innerHTML = `
@@ -3263,6 +3280,29 @@ async function guardarEdicionComprasPedido(){
 
     showToast('Pedido actualizado.');
   }catch(e){ showToast('Error guardando cambios: ' + e.message, true); }
+}
+
+async function guardarDatosCompradorPedido(){
+  const payload = {
+    nombre_comprador: document.getElementById('pedido-contact-nombre')?.value || '',
+    telefono_comprador: document.getElementById('pedido-contact-telefono')?.value || '',
+    direccion_envio: document.getElementById('pedido-contact-direccion')?.value || ''
+  };
+  try{
+    const data = await apiFetch(endpointPedidoDetalle(), { method: 'PATCH', body: JSON.stringify(payload) });
+    if (!data.pedido) throw new Error('El servidor no devolvió el pedido actualizado.');
+    const actualizado = data.pedido;
+    const listaKey = pedidoDetalleEsSeguimiento(pedidoDetalleActual) ? 'pedidosSeguimiento' : 'pedidosNuevos';
+    const idx = state[listaKey].findIndex(x => x.id === pedidoDetalleActual.id);
+    if (idx !== -1) state[listaKey][idx] = actualizado;
+    pedidoDetalleActual = actualizado;
+    pedidoDetalleDatosEditando = false;
+    renderPedidoDetalleBody();
+    renderPedidosNuevos();
+    renderPedidosGuardados();
+    renderPedidosSeguimiento();
+    showToast('Datos del comprador actualizados.');
+  }catch(e){ showToast('Error guardando datos: ' + e.message, true); }
 }
 
 async function loadUsuarios(){

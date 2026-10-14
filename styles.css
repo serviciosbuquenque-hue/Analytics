@@ -1443,6 +1443,12 @@ textarea{ resize: vertical; }
 .detail-grid{ display:grid; grid-template-columns: 130px 1fr; row-gap:8px; font-size:13px; }
 .detail-grid dt{ color: var(--text-faint); }
 .detail-grid dd{ margin:0; }
+.pedido-contact-input{
+  width:100%; min-width:0; background:var(--surface-2); border:1px solid var(--border);
+  border-radius:var(--radius-s); color:var(--text); font-size:13px; padding:8px 9px;
+}
+.pedido-contact-input:focus{ outline:2px solid var(--accent); outline-offset:1px; }
+.pedido-contact-actions{ display:flex; justify-content:flex-end; flex-wrap:wrap; gap:8px; margin-top:12px; }
 .compras-list{ margin-top:8px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
 .compras-list table{ font-size:12.5px; width:100%; }
 .compras-list strong{ font-size: 12.5px; color: var(--text-muted); text-transform:uppercase; letter-spacing:.04em; }
@@ -1798,6 +1804,7 @@ textarea{ resize: vertical; }
   .form-actions .btn{ width:100%; justify-content:center; }
 
   .detail-grid{ grid-template-columns: 100px 1fr; row-gap:6px; }
+  .pedido-contact-actions .btn{ flex:1 1 auto; justify-content:center; }
   .row-actions{ justify-content:flex-start; }
   #view-pedidos .estado-checks{ grid-template-columns: 1fr 1fr; }
 
