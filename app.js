@@ -2998,16 +2998,6 @@ function renderPedidoDetalleBody(){
     </div>
   `;
 
-  document.getElementById('pedido-editar-datos-btn')?.addEventListener('click', () => {
-    pedidoDetalleDatosEditando = true;
-    renderPedidoDetalleBody();
-  });
-  document.getElementById('pedido-cancelar-datos-btn')?.addEventListener('click', () => {
-    pedidoDetalleDatosEditando = false;
-    renderPedidoDetalleBody();
-  });
-  document.getElementById('pedido-guardar-datos-btn')?.addEventListener('click', guardarDatosCompradorPedido);
-
   if (!pedidoDetalleEditando){
     body.innerHTML = `
       ${cabecera}
@@ -3025,6 +3015,15 @@ function renderPedidoDetalleBody(){
           </table>` : `<p class="hint">Este pedido no tiene productos registrados.</p>`}
       </div>
     `;
+    document.getElementById('pedido-editar-datos-btn')?.addEventListener('click', () => {
+      pedidoDetalleDatosEditando = true;
+      renderPedidoDetalleBody();
+    });
+    document.getElementById('pedido-cancelar-datos-btn')?.addEventListener('click', () => {
+      pedidoDetalleDatosEditando = false;
+      renderPedidoDetalleBody();
+    });
+    document.getElementById('pedido-guardar-datos-btn')?.addEventListener('click', guardarDatosCompradorPedido);
     const editBtn = document.getElementById('pedido-editar-compras-btn');
     if (editBtn) editBtn.addEventListener('click', iniciarEdicionComprasPedido);
     // Guardar fecha de entrega desde el modal de detalle
