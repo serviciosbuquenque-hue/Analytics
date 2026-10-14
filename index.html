@@ -14,7 +14,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Analytics">
-<link rel="stylesheet" href="styles.css?v=17">
+<link rel="stylesheet" href="styles.css?v=18">
 </head>
 <body>
 
@@ -1161,6 +1161,7 @@
     </header>
     <div class="modal-body" id="pedido-detalle-body"></div>
     <footer class="modal-footer">
+      <button class="btn btn-primary" id="pedido-descargar-factura" type="button"><i class="fa-solid fa-file-arrow-down" aria-hidden="true"></i> Descargar factura</button>
       <button class="btn btn-ghost" data-close="modal-pedido">Cerrar</button>
     </footer>
   </div>
@@ -1286,6 +1287,42 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=12"></script>
+<section id="receipt-export" aria-hidden="true">
+  <header class="receipt-header">
+    <div class="receipt-header-left">
+      <h1>BUQUENQUE SHOPS</h1>
+      <p id="export-order-id"></p>
+    </div>
+    <div class="receipt-header-right">
+      <p id="export-date"></p>
+      <p>OPERADOR: INTERNO-01</p>
+    </div>
+  </header>
+  <section class="receipt-client-info">
+    <h2>DATOS DEL CLIENTE</h2>
+    <p id="export-client-name"></p>
+    <p id="export-address"></p>
+    <p id="export-delivery-method" hidden></p>
+    <p id="export-priority" hidden></p>
+    <p id="export-recipient-name"></p>
+    <p id="export-recipient-phone"></p>
+    <p id="export-buyer-phone"></p>
+  </section>
+  <table class="receipt-items">
+    <thead><tr><th>DESCRIPCIÓN</th><th>CANT</th><th>P.U.</th><th>SUB</th></tr></thead>
+    <tbody id="export-table-body"></tbody>
+  </table>
+  <section class="receipt-totals">
+    <div><span>SUBTOTAL NETO</span><span id="export-subtotal"></span></div>
+    <div><span>DESC. APLICADOS</span><span id="export-discounts"></span></div>
+    <div class="receipt-grand-total"><span>TOTAL ORDEN</span><span id="export-total"></span></div>
+  </section>
+  <footer class="receipt-footer">
+    <p>ESTE DOCUMENTO ES UNA ORDEN DE TRABAJO INTERNA PARA DESPACHO.</p>
+  </footer>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" crossorigin="anonymous"></script>
+<script src="app.js?v=13"></script>
 </body>
 </html>

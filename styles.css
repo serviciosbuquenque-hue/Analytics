@@ -1458,6 +1458,48 @@ textarea{ resize: vertical; }
   width:100%; min-width:110px; background: var(--surface-2); border:1px solid var(--border);
   border-radius: var(--radius-s); color: var(--text); font-size:12.5px; padding:6px 8px;
 }
+#receipt-export{
+  position:absolute; left:-10000px; top:0; width:550px; padding:20px;
+  background:#fff; color:#0f172a; font-family:'IBM Plex Mono','Courier New',monospace;
+  font-size:16px; line-height:1.6; font-weight:400; box-sizing:border-box;
+}
+#receipt-export,
+#receipt-export h1,
+#receipt-export h2,
+#receipt-export p,
+#receipt-export span,
+#receipt-export th,
+#receipt-export td{ color:#0f172a; }
+#receipt-export *{ box-sizing:border-box; margin:0; padding:0; }
+#receipt-export .receipt-header{
+  display:flex; justify-content:space-between; align-items:flex-end; gap:16px;
+  padding-bottom:16px; margin-bottom:24px; border-bottom:2px solid #0f172a;
+}
+#receipt-export .receipt-header h1{ font-size:28px; line-height:1.2; font-weight:700; margin-bottom:4px; }
+#receipt-export .receipt-header p{ font-size:14px; margin-top:4px; }
+#receipt-export .receipt-header-right{ text-align:right; white-space:nowrap; }
+#receipt-export .receipt-client-info{ margin-bottom:24px; }
+#receipt-export .receipt-client-info h2{
+  font-size:20px; font-weight:700; border-bottom:1px solid #cbd5e1;
+  padding-bottom:8px; margin-bottom:12px;
+}
+#receipt-export .receipt-client-info p{ font-size:17px; line-height:1.4; margin-bottom:4px; overflow-wrap:anywhere; }
+#receipt-export .receipt-client-info p:first-of-type{ font-weight:700; }
+#receipt-export .receipt-items{ width:100%; border-collapse:collapse; font-size:17px; }
+#receipt-export .receipt-items th{ background:#f8fafc; color:#0f172a; font-size:16px; font-weight:700; text-align:left; padding:8px 0; border-bottom:2px solid #0f172a; }
+#receipt-export .receipt-items tbody td,
+#receipt-export .receipt-items tbody tr:hover td{ background:#fff; color:#0f172a; padding:6px 0; border-bottom:1px solid #e2e8f0; vertical-align:top; overflow-wrap:anywhere; }
+#receipt-export .receipt-items th:nth-child(2),
+#receipt-export .receipt-items td:nth-child(2){ text-align:center; width:12%; }
+#receipt-export .receipt-items th:nth-child(3),
+#receipt-export .receipt-items th:nth-child(4),
+#receipt-export .receipt-items td:nth-child(3),
+#receipt-export .receipt-items td:nth-child(4){ text-align:right; white-space:nowrap; }
+#receipt-export .receipt-items th:first-child{ width:52%; }
+#receipt-export .receipt-totals{ border-top:2px solid #0f172a; padding-top:16px; margin-top:0; }
+#receipt-export .receipt-totals div{ display:flex; justify-content:space-between; gap:16px; font-size:17px; margin-bottom:8px; }
+#receipt-export .receipt-totals .receipt-grand-total{ border-top:1px solid #cbd5e1; padding-top:8px; margin-bottom:0; font-size:22px; font-weight:700; }
+#receipt-export .receipt-footer{ border-top:1px dotted #cbd5e1; padding-top:16px; margin-top:40px; text-align:center; color:#64748b; font-size:12px; }
 .compras-edit-total{ margin-top:10px; text-align:right; font-size:13.5px; }
 .compras-edit-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:12px; flex-wrap:wrap; }
 

@@ -2944,6 +2944,10 @@ let pedidoDetalleEditando = false;
 let pedidoDetalleDatosEditando = false;
 let pedidoDetalleComprasEdit = [];
 
+document.getElementById('pedido-descargar-factura')?.addEventListener('click', () => {
+  descargarFacturaPedido(pedidoDetalleActual);
+});
+
 function pedidoDetalleEsSeguimiento(p){
   return !!(p && p.fecha_asignacion);
 }
@@ -2961,6 +2965,119 @@ function showPedidoDetalle(p){
   pedidoDetalleComprasEdit = [];
   renderPedidoDetalleBody();
   openModal('modal-pedido');
+}
+
+function fechaFactura(pedido){
+  const raw = String(pedido.fecha_hora_entrada || pedido.fecha_registro_backend || pedido.fecha_asignacion || '').trim();
+  const localParts = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (localParts) return `${localParts[3]}/${localParts[2]}/${localParts[1]}, ${localParts[4]}:${localParts[5]}:${localParts[6] || '00'}`;
+  const parsed = raw ? new Date(raw) : new Date();
+  if (Number.isNaN(parsed.getTime())) return raw || new Date().toLocaleString('es-ES');
+  return parsed.toLocaleString('es-ES', {
+    timeZone: 'America/Havana', day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+  });
+}
+
+function facturaSetText(id, value, optional = false){
+  const element = document.getElementById(id);
+  if (!element) return;
+  const text = String(value || '').trim();
+  element.textContent = text;
+  if (optional) element.hidden = !text;
+}
+
+function facturaMoney(cents){
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+async function descargarFacturaPedido(pedido){
+  if (!pedido) return;
+  if (typeof window.html2canvas !== 'function'){
+    showToast('No se pudo cargar html2canvas. Comprueba la conexión e inténtalo de nuevo.', true);
+    return;
+  }
+
+  const receipt = document.getElementById('receipt-export');
+  const tbody = document.getElementById('export-table-body');
+  if (!receipt || !tbody){
+    showToast('No está disponible la plantilla de factura.', true);
+    return;
+  }
+
+  const orderNumber = getPedidoNumero(pedido) || pedido.id || 'SIN-ORDEN';
+  facturaSetText('export-order-id', `ORDEN: #${orderNumber}`);
+  facturaSetText('export-date', fechaFactura(pedido));
+  facturaSetText('export-client-name', pedido.nombre_comprador || 'CLIENTE GENÉRICO');
+  facturaSetText('export-address', `DIRECCIÓN: ${pedido.direccion_envio || 'N/A'}`);
+  facturaSetText('export-delivery-method', pedido.metodo_entrega || pedido.delivery_method || '', true);
+  facturaSetText('export-priority', pedido.prioridad || pedido.priority || '', true);
+  facturaSetText('export-recipient-name', `RECIBE: ${pedido.nombre_persona_entrega || 'N/A'}`);
+  facturaSetText('export-recipient-phone', `TELÉFONO DE ENTREGA: ${pedido.telefono_persona_entrega || 'N/A'}`);
+  facturaSetText('export-buyer-phone', `TELÉFONO DEL COMPRADOR: ${pedido.telefono_comprador || 'N/A'}`);
+
+  const items = Array.isArray(pedido.compras) ? pedido.compras : [];
+  tbody.replaceChildren();
+  let subtotalCents = 0;
+  let totalItemsCents = 0;
+  items.forEach(item => {
+    if (!item) return;
+    const quantity = Math.max(0, Math.floor(Number(item.quantity ?? item.cantidad ?? 0)));
+    if (quantity <= 0) return;
+    const listPriceCents = Math.max(0, Math.round(Number(item.listPrice ?? item.unitPrice ?? item.precio ?? 0) * 100));
+    const finalPriceCents = Math.max(0, Math.round(Number(item.unitPrice ?? item.precio ?? 0) * 100));
+    subtotalCents += listPriceCents * quantity;
+    totalItemsCents += finalPriceCents * quantity;
+
+    const row = document.createElement('tr');
+    [item.name || item.nombre || 'Producto', String(quantity), facturaMoney(listPriceCents), facturaMoney(listPriceCents * quantity)].forEach(value => {
+      const cell = document.createElement('td');
+      cell.textContent = value;
+      row.appendChild(cell);
+    });
+    tbody.appendChild(row);
+  });
+  if (!tbody.children.length){
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 4;
+    cell.textContent = 'No hay productos registrados';
+    row.appendChild(cell);
+    tbody.appendChild(row);
+  }
+
+  const savedTotal = Number(pedido.precio_compra_total);
+  const totalCents = Number.isFinite(savedTotal) ? Math.max(0, Math.round(savedTotal * 100)) : totalItemsCents;
+  const discountCents = Math.max(0, subtotalCents - totalCents);
+  facturaSetText('export-subtotal', facturaMoney(subtotalCents));
+  facturaSetText('export-discounts', `+$${(discountCents / 100).toFixed(2)}`);
+  facturaSetText('export-total', facturaMoney(totalCents));
+
+  try{
+    if (document.fonts?.ready) await document.fonts.ready;
+    const canvas = await window.html2canvas(receipt, {
+      scale: 2.5,
+      backgroundColor: '#ffffff',
+      useCORS: true,
+      logging: false,
+      allowTaint: false
+    });
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    if (!blob) throw new Error('No fue posible convertir la factura a PNG.');
+
+    const safeOrderNumber = String(orderNumber).replace(/[^a-z0-9_-]/gi, '-');
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Factura_${safeOrderNumber}.png`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    showToast(`Factura de la orden ${orderNumber} descargada.`);
+  }catch(error){
+    showToast('Error generando la factura: ' + error.message, true);
+  }
 }
 
 function totalComprasEdit(){
@@ -3172,11 +3289,15 @@ function bindFilaEdicionPedidoEventos(){
         ...pedidoDetalleComprasEdit[idx],
         id: prod.id,
         name: prod.nombre,
-        unitPrice: Number(prod.precio) || 0
+        unitPrice: Number(prod.oferta && Number(prod.descuento) > 0
+          ? Number(prod.precio) * (1 - Number(prod.descuento) / 100)
+          : prod.precio) || 0,
+        listPrice: Number(prod.precio) || 0,
+        discount: prod.oferta ? Number(prod.descuento) || 0 : 0
       };
       inp.value = prod.nombre;
       const precioInput = body.querySelector(`.pedido-edit-price[data-idx="${idx}"]`);
-      if (precioInput) precioInput.value = Number(prod.precio) || 0;
+      if (precioInput) precioInput.value = pedidoDetalleComprasEdit[idx].unitPrice;
       actualizarFilaEdicionPedido(idx);
       lista.hidden = true;
       lista.innerHTML = '';
@@ -3235,6 +3356,8 @@ async function iniciarEdicionComprasPedido(){
     id: c.id ?? c.productId ?? c.product_id ?? null,
     name: c.name || c.nombre || 'Producto',
     unitPrice: Number(c.unitPrice ?? c.precio ?? 0) || 0,
+    listPrice: Number(c.listPrice ?? c.unitPrice ?? c.precio ?? 0) || 0,
+    discount: Number(c.discount || 0) || 0,
     quantity: Number(c.quantity ?? c.cantidad ?? 1) || 1
   }));
   pedidoDetalleEditando = true;
@@ -3259,7 +3382,14 @@ async function guardarEdicionComprasPedido(){
     }
     const compras = pedidoDetalleComprasEdit
       .filter(c => (Number(c.quantity) || 0) > 0)
-      .map(c => ({ id: c.id, name: c.name, unitPrice: Number(c.unitPrice) || 0, quantity: Number(c.quantity) || 0 }));
+      .map(c => ({
+        id: c.id,
+        name: c.name,
+        unitPrice: Number(c.unitPrice) || 0,
+        listPrice: Number(c.listPrice ?? c.unitPrice) || 0,
+        discount: Number(c.discount) || 0,
+        quantity: Number(c.quantity) || 0
+      }));
 
     const data = await apiFetch(endpointPedidoDetalle(), { method: 'PATCH', body: JSON.stringify({ compras }) });
     const actualizado = data.pedido;
