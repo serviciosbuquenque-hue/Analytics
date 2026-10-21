@@ -90,6 +90,24 @@ function debounce(fn, wait = 80){
   };
 }
 
+/* ------------------------- Caché de peticiones ------------------------- */
+// El panel cambia de pestaña con frecuencia y cada cambio volvía a descargar
+// los mismos listados (pedidos, pedidos asignados, estadísticas...). Esta
+// caché evita peticiones repetidas dentro de una ventana corta, deduplica las
+// que van en paralelo y aprovecha el ETag del backend (304 = "no cambió", sin
+// cuerpo). Cualquier escritura limpia la caché para que los cambios se vean
+// al instante.
+const API_CACHE_TTL_MS = 30 * 1000;
+const apiGetCache = new Map();   // key -> { data, at, etag }
+const apiInflight = new Map();   // key -> Promise
+let apiCacheGeneration = 0;
+
+function invalidateApiCache(){
+  apiGetCache.clear();
+  apiInflight.clear();
+  apiCacheGeneration += 1;
+}
+
 async function apiFetch(path, options = {}){
   if (!apiUrlOk()){
     showToast('Configura primero la URL del backend en "Conexión".', true);
@@ -97,33 +115,80 @@ async function apiFetch(path, options = {}){
     throw new Error('API URL no configurada');
   }
   const base = state.apiUrl.replace(/\/$/, '');
-  let res;
-  try {
-    res = await fetch(base + path, {
-      credentials: 'include',
-      cache: 'no-store',
-      ...options,
-      headers: { 'Content-Type': 'application/json', ...authHeaders(), ...(options.headers || {}) }
-    });
-  } catch (networkErr) {
-    setOfflineBanner(true);
-    throw new Error('Sin conexión con el backend. Verifica tu internet.');
+  const method = String(options.method || 'GET').toUpperCase();
+  const isGet = method === 'GET';
+  const force = Boolean(options.force);
+  const ttl = Number.isFinite(options.ttl) ? Number(options.ttl) : API_CACHE_TTL_MS;
+  const { force: _force, ttl: _ttl, ...fetchOptions } = options;
+  // El token entra en la clave: al iniciar/cerrar sesión no se reutiliza una
+  // respuesta anterior con otro estado de autenticación.
+  const key = `${method} ${base}${path} ${state.authToken || ''}`;
+  const cached = isGet ? apiGetCache.get(key) : null;
+  const generationAtStart = apiCacheGeneration;
+
+  if (isGet && !force && cached && (Date.now() - cached.at) < ttl) return cached.data;
+  if (isGet && apiInflight.has(key)) return apiInflight.get(key);
+
+  const run = (async () => {
+    const headers = { 'Content-Type': 'application/json', ...authHeaders(), ...(fetchOptions.headers || {}) };
+    if (isGet && cached && cached.etag) headers['If-None-Match'] = cached.etag;
+
+    let res;
+    try {
+      res = await fetch(base + path, {
+        credentials: 'include',
+        cache: 'no-store',
+        ...fetchOptions,
+        method,
+        headers
+      });
+    } catch (networkErr) {
+      setOfflineBanner(true);
+      throw new Error('Sin conexión con el backend. Verifica tu internet.');
+    }
+    setOfflineBanner(false);
+    if (res.status === 401){
+      // La sesión no existe o expiró: ocultar la app y volver a pedir login.
+      setAuthToken(null);
+      lockApp();
+      showAuthGate();
+      throw new Error('Sesión no iniciada. Inicia sesión para continuar.');
+    }
+
+    // 304: el backend confirma que no cambió nada y reutilizamos lo cacheado.
+    if (isGet && res.status === 304 && cached){
+      cached.at = Date.now();
+      return cached.data;
+    }
+
+    let data = null;
+    try { data = await res.json(); } catch (e) { /* respuesta sin cuerpo JSON */ }
+    if (!res.ok){
+      const msg = (data && (data.message || data.error)) || `Error HTTP ${res.status}`;
+      throw new Error(msg);
+    }
+    if (isGet){
+      // Si hubo una escritura mientras esta lectura estaba en vuelo, el
+      // resultado ya es viejo: se devuelve pero no se guarda en caché.
+      if (generationAtStart === apiCacheGeneration){
+        apiGetCache.set(key, { data, at: Date.now(), etag: res.headers.get('ETag') || null });
+      }
+    } else {
+      // Cualquier escritura invalida los listados cacheados.
+      invalidateApiCache();
+    }
+    return data;
+  })();
+
+  if (isGet){
+    apiInflight.set(key, run);
+    // La promesa original sigue siendo la que recibe el llamador; este
+    // finally solo limpia el mapa de peticiones en vuelo.
+    run.finally(() => {
+      if (apiInflight.get(key) === run) apiInflight.delete(key);
+    }).catch(() => {});
   }
-  setOfflineBanner(false);
-  if (res.status === 401){
-    // La sesión no existe o expiró: ocultar la app y volver a pedir login.
-    setAuthToken(null);
-    lockApp();
-    showAuthGate();
-    throw new Error('Sesión no iniciada. Inicia sesión para continuar.');
-  }
-  let data = null;
-  try { data = await res.json(); } catch (e) { /* respuesta sin cuerpo JSON */ }
-  if (!res.ok){
-    const msg = (data && (data.message || data.error)) || `Error HTTP ${res.status}`;
-    throw new Error(msg);
-  }
-  return data;
+  return run;
 }
 
 function setOfflineBanner(show){
@@ -2200,15 +2265,15 @@ function normalizePedidoState(p){
   };
 }
 
-async function loadPedidosSection(){
+async function loadPedidosSection(force = false){
   try{
-    const [nuevosData, asignadosData] = await Promise.all([
-      apiFetch('/api/pedidos'),
-      apiFetch('/api/pedidos-asignados').catch(() => ({ pedidosAsignados: [] }))
-    ]);
-    const asignados = asignadosData.pedidosAsignados || [];
+    // Un solo endpoint devuelve pedidos y pedidos asignados hidratados, ya
+    // proyectados (sin stock_afectados). Antes eran dos peticiones y dos
+    // descargas de /pedidos por cada refresco.
+    const data = await apiFetch('/api/panel/pedidos?compact=1', { force });
+    const asignados = data.pedidosAsignados || [];
     const asignadosIds = new Set(asignados.map(p => p.pedido_origen_id || p.id));
-    state.pedidosNuevos = (nuevosData.pedidos || []).filter(p => !asignadosIds.has(p.id));
+    state.pedidosNuevos = (data.pedidos || []).filter(p => !asignadosIds.has(p.id));
     state.pedidosSeguimiento = asignados.map(p => normalizePedidoState({
       ...p,
       fecha_asignacion: p.fecha_asignacion || p.fecha_registro_backend || '—'
@@ -2221,7 +2286,7 @@ async function loadPedidosSection(){
   }catch(e){ showToast('Error cargando pedidos: ' + e.message, true); }
 }
 
-document.getElementById('pedidos-refresh').addEventListener('click', loadPedidosSection);
+document.getElementById('pedidos-refresh').addEventListener('click', () => loadPedidosSection(true));
 document.getElementById('pedidos-search').addEventListener('input', debounce(() => {
   renderPedidosNuevos();
   renderPedidosGuardados();
@@ -3358,7 +3423,10 @@ async function iniciarEdicionComprasPedido(){
     unitPrice: Number(c.unitPrice ?? c.precio ?? 0) || 0,
     listPrice: Number(c.listPrice ?? c.unitPrice ?? c.precio ?? 0) || 0,
     discount: Number(c.discount || 0) || 0,
-    quantity: Number(c.quantity ?? c.cantidad ?? 1) || 1
+    quantity: Number(c.quantity ?? c.cantidad ?? 1) || 1,
+    // Conserva si el ítem era un pack: el backend lo usa para restaurar stock
+    // y recalcular el precio correctamente al guardar.
+    type: c.type || (c.isPack || c.pack ? 'pack' : 'product')
   }));
   pedidoDetalleEditando = true;
   renderPedidoDetalleBody();
@@ -3388,7 +3456,8 @@ async function guardarEdicionComprasPedido(){
         unitPrice: Number(c.unitPrice) || 0,
         listPrice: Number(c.listPrice ?? c.unitPrice) || 0,
         discount: Number(c.discount) || 0,
-        quantity: Number(c.quantity) || 0
+        quantity: Number(c.quantity) || 0,
+        type: c.type || 'product'
       }));
 
     const data = await apiFetch(endpointPedidoDetalle(), { method: 'PATCH', body: JSON.stringify({ compras }) });
@@ -3434,9 +3503,9 @@ async function guardarDatosCompradorPedido(){
   }catch(e){ showToast('Error guardando datos: ' + e.message, true); }
 }
 
-async function loadUsuarios(){
+async function loadUsuarios(force = false){
   try{
-    const data = await apiFetch('/obtener-estadisticas');
+    const data = await apiFetch('/obtener-estadisticas', { force });
     const usuarios = Array.isArray(data) ? data : [];
     state.usuarios = usuarios
       .filter(u => u && typeof u === 'object')
@@ -3518,7 +3587,7 @@ function renderUsuarios(){
   }
 }
 
-document.getElementById('usr-refresh').addEventListener('click', loadUsuarios);
+document.getElementById('usr-refresh').addEventListener('click', () => loadUsuarios(true));
 document.getElementById('usr-load-more')?.addEventListener('click', () => {
   const filtered = getFilteredUsuarios();
   if (state.usuariosPage * state.usuariosPageSize < filtered.length) {
@@ -3644,9 +3713,9 @@ function buildClientesFromPedidos(){
   });
 }
 
-async function loadClientes(){
+async function loadClientes(force = false){
   try{
-    await loadPedidosSection();
+    await loadPedidosSection(force);
     state.clientes = buildClientesFromPedidos();
     renderClientes();
   }catch(e){ showToast('Error cargando clientes: ' + e.message, true); }
@@ -3722,7 +3791,7 @@ document.getElementById('cli-search')?.addEventListener('input', debounce((event
   state.clientesQuery = event.target.value;
   renderClientes();
 }, 150));
-document.getElementById('cli-refresh')?.addEventListener('click', loadClientes);
+document.getElementById('cli-refresh')?.addEventListener('click', () => loadClientes(true));
 
 let clienteDetalleActual = null;
 let clienteDetallePedidoId = null;
@@ -4715,11 +4784,19 @@ function nodeChainVertical(datos, max, contW){
   return `<svg viewBox="0 0 ${width} ${height}" class="flow-svg flow-svg-vertical" preserveAspectRatio="xMidYMid meet"><g class="flow-links">${links}</g>${nodosHtml}</svg>`;
 }
 
-function renderHorasConexionChart(usuarios){
+function renderHorasConexionChart(visitas){
   const horas = Array.from({ length: 24 }, (_, h) => ({ hora: h, total: 0 }));
-  for (let i = 0; i < usuarios.length; i++) {
-    const h = horaDeEntrada(usuarios[i]);
-    if (h != null) horas[h].total++;
+  if (visitas && Array.isArray(visitas.byHour)){
+    // Preferimos el agregado del backend: no hace falta bajar todo el
+    // histórico de visitas para pintar este gráfico.
+    visitas.byHour.forEach((total, h) => {
+      if (h >= 0 && h < 24) horas[h].total = Number(total) || 0;
+    });
+  } else if (Array.isArray(visitas)){
+    for (let i = 0; i < visitas.length; i++) {
+      const h = horaDeEntrada(visitas[i]);
+      if (h != null) horas[h].total++;
+    }
   }
   const hayDatos = horas.some(h => h.total > 0);
   const mejorHora = hayDatos ? horas.reduce((a, b) => (b.total > a.total ? b : a)) : null;
@@ -4840,17 +4917,19 @@ function renderResumenInsights({ pendienteCobro, pendientesCount, cambio7Dias, p
 
 let ultimoResumenInforme = null;
 
-async function loadResumen(){
+async function loadResumen(force = false){
   try{
-    const [nuevosData, asignadosData, estadisticasData, productosData] = await Promise.all([
-      apiFetch('/api/pedidos'),
-      apiFetch('/api/pedidos-asignados').catch(() => ({ pedidosAsignados: [] })),
-      apiFetch('/obtener-estadisticas').catch(() => []),
-      apiFetch('/api/products').catch(() => ({ products: [] }))
+    const [panelData, resumenVisitas, productosData] = await Promise.all([
+      apiFetch('/api/panel/pedidos?compact=1', { force }),
+      // Resumen agregado: 4 tarjetas, gráficos y series sin descargar todo el
+      // histórico de visitas. El histórico completo solo se pide en "Usuarios".
+      apiFetch('/api/stats/summary', { force }).catch(() => null),
+      apiFetch('/api/products', { force }).catch(() => ({ products: [] }))
     ]);
-    const nuevos = nuevosData.pedidos || [];
-    const asignados = asignadosData.pedidosAsignados || [];
-    const usuarios = Array.isArray(estadisticasData) ? estadisticasData : [];
+    const nuevos = panelData.pedidos || [];
+    const asignados = panelData.pedidosAsignados || [];
+    const visitas = (resumenVisitas && resumenVisitas.success !== false) ? resumenVisitas : {};
+    const totalUsuarios = Number(visitas.total) || 0;
     if (Array.isArray(productosData.products)) state.productos = productosData.products;
     const asignadosIds = new Set(asignados.map(p => getOriginalPedidoId(p)));
     const nuevosSinAsignar = nuevos.filter(p => !asignadosIds.has(getOriginalPedidoId(p)));
@@ -4895,11 +4974,9 @@ async function loadResumen(){
     const pronostico = calcularPronosticoMensual(ventasMes, ventasMesAnterior, hoy, ventasUltimos7Dias);
     const metricasClientes = calcularMetricasClientes(pedidosUnicos, hoy);
     const productosVendidosMes = sumaCompras(delMes);
-    const recurrentes = usuarios.filter(u => u.tipo_usuario === 'Recurrente').length;
+    const recurrentes = Number(visitas.recurrentes) || 0;
     const seguimientoAbierto = asignados.filter(p => estadoPedidoKey(p) !== 'completado').length;
-    const allDurations = usuarios.map(u => parseSessionDuration(u));
-    const validDurations = allDurations.filter(v => v > 0);
-    const promedioSegundos = validDurations.length ? validDurations.reduce((a, b) => a + b, 0) / validDurations.length : 0;
+    const promedioSegundos = Number(visitas.avgSessionSeconds) || 0;
     const seguimientoNoPagado = asignados.filter(p => !toBoolean(p.pagado)).length;
     const crecimientoPorcentaje = ventasMesAnterior > 0
       ? ((ventasMes - ventasMesAnterior) / ventasMesAnterior) * 100
@@ -4966,8 +5043,8 @@ async function loadResumen(){
     setText('resu-ventas-ayer', '$' + ventasAyer.toFixed(2));
     setText('resu-ventas-hoy', '$' + ventasHoy.toFixed(2));
     setText('resu-productos-mes', productosVendidosMes);
-    setText('resu-usuarios', usuarios.length);
-    setText('resu-usuarios-sub', usuarios.length ? `${recurrentes} recurrentes` : '—');
+    setText('resu-usuarios', totalUsuarios);
+    setText('resu-usuarios-sub', totalUsuarios ? `${recurrentes} recurrentes` : '—');
 
     const recientes = [...pedidosUnicos]
       .sort((a, b) => (parseFechaPedidoLocal(getPedidoFecha(b))?.getTime() || 0) - (parseFechaPedidoLocal(getPedidoFecha(a))?.getTime() || 0))
@@ -4987,12 +5064,9 @@ async function loadResumen(){
       });
     }
 
-    const origenes = {};
-    usuarios.forEach(u => {
-      const key = u.origen || u.fuente_trafico || 'Desconocido';
-      origenes[key] = (origenes[key] || 0) + 1;
-    });
-    const origenesOrdenadosFull = Object.entries(origenes).sort((a, b) => b[1] - a[1]);
+    const origenesOrdenadosFull = Array.isArray(visitas.byOrigin)
+      ? visitas.byOrigin.map(item => [item.origen || 'Desconocido', Number(item.count) || 0])
+      : [];
     const listaOrigenes = document.getElementById('resu-origenes');
     if (listaOrigenes){
       const origenesOrdenados = origenesOrdenadosFull.slice(0, 6);
@@ -5000,7 +5074,7 @@ async function loadResumen(){
         <div class="mini-row"><span class="k">${escapeHtml(k)}</span><span class="v">${v}</span></div>`).join('') : `<p class="hint">Sin datos todavía.</p>`;
     }
 
-    registrarNodeChart('resu-flow-chart', () => renderFlowChart(origenesOrdenadosFull, usuarios.length, pedidosUnicos.length, ventasMes));
+    registrarNodeChart('resu-flow-chart', () => renderFlowChart(origenesOrdenadosFull, totalUsuarios, pedidosUnicos.length, ventasMes));
     renderVentasMesChart(pedidosUnicos, pronostico);
 
     /* ---------------- Productos más vendidos (del mes) ---------------- */
@@ -5070,7 +5144,7 @@ async function loadResumen(){
     setText('resu-rango-ticket', '$' + ticketPromedio.toFixed(2));
 
     /* ---------------- Horas buenas de entrada ---------------- */
-    renderHorasConexionChart(usuarios);
+    renderHorasConexionChart(visitas);
   }catch(e){
     showToast('Error cargando el resumen: ' + e.message, true);
   }
@@ -5253,12 +5327,9 @@ function cantidadProductoEnPedido(p, prod){
 // herramienta y sin tocar state.pedidosNuevos/state.pedidosSeguimiento.
 async function cargarStockCheckPedidos(forzar = false){
   if (state.stockCheck.pedidosCache && !forzar) return state.stockCheck.pedidosCache;
-  const [nuevosData, asignadosData] = await Promise.all([
-    apiFetch('/api/pedidos'),
-    apiFetch('/api/pedidos-asignados').catch(() => ({ pedidosAsignados: [] }))
-  ]);
-  const nuevos = nuevosData.pedidos || [];
-  const asignados = asignadosData.pedidosAsignados || [];
+  const data = await apiFetch('/api/panel/pedidos?compact=1', { force: forzar });
+  const nuevos = data.pedidos || [];
+  const asignados = data.pedidosAsignados || [];
   const asignadosIds = new Set(asignados.map(p => getOriginalPedidoId(p)));
   const nuevosSinAsignar = nuevos.filter(p => !asignadosIds.has(getOriginalPedidoId(p)));
   const mapa = new Map();
