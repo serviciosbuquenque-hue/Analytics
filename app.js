@@ -3949,6 +3949,92 @@ async function checkAuth(){
   }
 }
 
+const PRESENCE_DEVICE_KEY = 'analytics_presence_device_id';
+const PRESENCE_HEARTBEAT_MS = 25000;
+let presenceSessionId = null;
+let presenceHeartbeatTimer = null;
+let presenceStarted = false;
+let presenceRequestInFlight = false;
+let presenceVisibilityHandler = null;
+
+function getPresenceDeviceId(){
+  let id = localStorage.getItem(PRESENCE_DEVICE_KEY);
+  if (!id){
+    id = window.crypto?.randomUUID
+      ? window.crypto.randomUUID()
+      : `device-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem(PRESENCE_DEVICE_KEY, id);
+  }
+  return id;
+}
+
+function getPresenceSessionId(){
+  if (!presenceSessionId) {
+    presenceSessionId = window.crypto?.randomUUID
+      ? window.crypto.randomUUID()
+      : `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+  return presenceSessionId;
+}
+
+function renderPresenceCount(count){
+  document.querySelectorAll('[data-presence-count]').forEach(el => {
+    el.textContent = String(count);
+  });
+}
+
+async function sendAnalyticsPresence(action = 'heartbeat'){
+  if (!apiUrlOk() || !state.authToken || presenceRequestInFlight) return;
+  if (action === 'heartbeat' && document.visibilityState === 'hidden') return;
+  presenceRequestInFlight = true;
+  try{
+    const base = state.apiUrl.replace(/\/$/, '');
+    const response = await fetch(base + '/api/admin/analytics-presence', {
+      method: 'POST',
+      credentials: 'include',
+      cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ deviceId: getPresenceDeviceId(), sessionId: getPresenceSessionId(), action })
+    });
+    if (response.status === 401){
+      setAuthToken(null);
+      lockApp();
+      showAuthGate();
+      return;
+    }
+    if (!response.ok) return;
+    const data = await response.json();
+    if (Number.isFinite(Number(data.activeSessions))) renderPresenceCount(data.activeSessions);
+  }catch(e){
+    // Las sesiones inactivas caducan en el servidor; un fallo de presencia no afecta al panel.
+  }finally{
+    presenceRequestInFlight = false;
+  }
+}
+
+function startAnalyticsPresence(){
+  if (presenceStarted || !state.authenticated || !apiUrlOk()) return;
+  presenceStarted = true;
+  sendAnalyticsPresence();
+  presenceHeartbeatTimer = setInterval(() => sendAnalyticsPresence(), PRESENCE_HEARTBEAT_MS);
+  presenceVisibilityHandler = () => {
+    if (document.visibilityState === 'visible') sendAnalyticsPresence();
+  };
+  document.addEventListener('visibilitychange', presenceVisibilityHandler);
+}
+
+function stopAnalyticsPresence(){
+  if (!presenceStarted) return;
+  presenceStarted = false;
+  clearInterval(presenceHeartbeatTimer);
+  presenceHeartbeatTimer = null;
+  if (presenceVisibilityHandler){
+    document.removeEventListener('visibilitychange', presenceVisibilityHandler);
+    presenceVisibilityHandler = null;
+  }
+  sendAnalyticsPresence('leave');
+}
+
 /* --- Bloqueo real del panel ------------------------------------------------
    El panel completo (sidebar, vistas, datos) arranca con la clase "locked"
    puesta directamente en el HTML, que lo pone en display:none. Esa clase
@@ -3965,6 +4051,7 @@ async function checkAuth(){
 
 function lockApp(){
   state.authenticated = false;
+  stopAnalyticsPresence();
   const appEl = document.querySelector('.app');
   if (appEl) appEl.classList.add('locked');
 }
@@ -3973,6 +4060,7 @@ function unlockApp(){
   state.authenticated = true;
   const appEl = document.querySelector('.app');
   if (appEl) appEl.classList.remove('locked');
+  startAnalyticsPresence();
   requestAnimationFrame(refreshAllSegTabsFade);
 }
 

@@ -14,7 +14,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Analytics">
-<link rel="stylesheet" href="styles.css?v=18">
+<link rel="stylesheet" href="styles.css?v=19">
 </head>
 <body>
 
@@ -214,6 +214,11 @@
         </div>
       </div>
 
+      <div class="presence-indicator presence-sidebar" role="status" aria-live="polite" title="Dispositivos con una sesión activa en Analytics">
+        <span class="presence-dot" aria-hidden="true"></span>
+        <span class="presence-copy"><span>Analytics en línea</span><strong data-presence-count>—</strong></span>
+      </div>
+
       <button type="button" id="logout-btn" class="nav-item nav-item-logout">
         <span class="nav-ico"><i class="fa-solid fa-right-from-bracket"></i></span> Cerrar sesión
       </button>
@@ -228,6 +233,9 @@
     <header class="topbar">
       <button id="menu-btn" class="icon-btn" aria-label="Abrir menú">☰</button>
       <h1 id="topbar-title">Panel</h1>
+      <div class="presence-indicator presence-mobile" role="status" aria-live="polite" title="Dispositivos con una sesión activa en Analytics">
+        <span class="presence-dot" aria-hidden="true"></span><strong data-presence-count>—</strong>
+      </div>
     </header>
 
     <main class="content">
@@ -1323,6 +1331,6 @@
 </section>
 
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" crossorigin="anonymous"></script>
-<script src="app.js?v=14"></script>
+<script src="app.js?v=15"></script>
 </body>
 </html>
